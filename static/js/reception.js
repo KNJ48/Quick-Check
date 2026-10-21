@@ -1,11 +1,26 @@
 "use strict";
 
-const csrf = document
-    .querySelector('meta[name="csrf-token"]')
-    .getAttribute("content");
+// ========================================
+// 科学技術部 QRコード受付システム
+// 受付専用・操作ボタンなし
+// ========================================
 
+
+// CSRFトークン
+const csrfMeta = document.querySelector(
+    'meta[name="csrf-token"]'
+);
+
+const csrf = csrfMeta
+    ? csrfMeta.getAttribute("content")
+    : null;
+
+
+// DOM取得
 const $ = id => document.getElementById(id);
 
+
+// 状態
 let currentGeneration = null;
 
 let qrExpireAt = 0;
@@ -13,7 +28,15 @@ let qrExpireAt = 0;
 let polling = false;
 
 
+// ========================================
+// API通信
+// ========================================
+
 async function apiPost(url) {
+
+    if (!csrf) {
+        throw new Error("csrf_missing");
+    }
 
     const response = await fetch(url, {
 
@@ -43,6 +66,10 @@ async function apiPost(url) {
 }
 
 
+// ========================================
+// 時間表示
+// ========================================
+
 function formatTime(seconds) {
 
     seconds = Math.max(
@@ -50,17 +77,21 @@ function formatTime(seconds) {
         Math.floor(seconds)
     );
 
+    const minutes = Math.floor(seconds / 60);
+
+    const secs = seconds % 60;
+
     return (
-        String(
-            Math.floor(seconds / 60)
-        ).padStart(2, "0") +
+        String(minutes).padStart(2, "0") +
         ":" +
-        String(
-            seconds % 60
-        ).padStart(2, "0")
+        String(secs).padStart(2, "0")
     );
 }
 
+
+// ========================================
+// QRコード削除
+// ========================================
 
 function clearQr(message) {
 
@@ -80,6 +111,10 @@ function clearQr(message) {
 }
 
 
+// ========================================
+// QRコード表示
+// ========================================
+
 function showQr(qr) {
 
     if (currentGeneration === qr.generation) {
@@ -89,7 +124,7 @@ function showQr(qr) {
     if (typeof QRCode === "undefined") {
 
         clearQr(
-            "QRコードライブラリの読み込みに失敗しました"
+            "QRコード生成ライブラリを読み込めませんでした"
         );
 
         return;
@@ -104,22 +139,31 @@ function showQr(qr) {
     $("receptionPlayer").textContent =
         "PLAYER " + qr.player_id;
 
+
     new QRCode(
         $("receptionQr"),
         {
             text: qr.url,
+
             width: 360,
+
             height: 360,
+
             colorDark: "#08111f",
+
             colorLight: "#ffffff",
+
             correctLevel: QRCode.CorrectLevel.M
         }
     );
+
 
     qrExpireAt =
         Date.now() +
         qr.remaining_seconds * 1000;
 
+
+    // QRコード切り替えアニメーション
     const area = document.querySelector(
         ".reception-qr-area"
     );
@@ -131,6 +175,10 @@ function showQr(qr) {
     area.classList.add("qr-change");
 }
 
+
+// ========================================
+// QRコード残り時間
+// ========================================
 
 function updateTimer() {
 
@@ -150,6 +198,10 @@ function updateTimer() {
 }
 
 
+// ========================================
+// 受付PCハートビート
+// ========================================
+
 async function poll() {
 
     if (polling) {
@@ -164,9 +216,12 @@ async function poll() {
             "/api/reception/heartbeat"
         );
 
+
         $("receptionStatus").textContent =
             "🟢 サーバー接続中";
 
+
+        // 受付停止中
         if (!data.reception) {
 
             clearQr(
@@ -176,6 +231,8 @@ async function poll() {
             return;
         }
 
+
+        // QRコード表示
         if (data.qr) {
 
             showQr(data.qr);
@@ -189,7 +246,10 @@ async function poll() {
 
     } catch (error) {
 
-        console.error(error);
+        console.error(
+            "受付通信エラー:",
+            error
+        );
 
         $("receptionStatus").textContent =
             "🔴 接続エラー";
@@ -205,8 +265,21 @@ async function poll() {
 }
 
 
-setInterval(updateTimer, 250);
+// ========================================
+// 定期実行
+// ========================================
 
-setInterval(poll, 3000);
+// QRコード残り時間更新
+setInterval(
+    updateTimer,
+    250
+);
 
+// 3秒ごとにサーバーへハートビート
+setInterval(
+    poll,
+    3000
+);
+
+// 初回通信
 poll();
