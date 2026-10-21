@@ -16,12 +16,15 @@ from flask import (
     jsonify,
     redirect,
     url_for,
-    make_response,
-    abort
+    make_response
 )
 
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+
+# ==========================================
+# 基本設定
+# ==========================================
 
 GAME_URL = (
     "https://ink3-1239.github.io/"
@@ -32,17 +35,26 @@ GAME_URL = (
 JST = ZoneInfo("Asia/Tokyo")
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
+RECEPTION_PASSWORD = os.environ.get("RECEPTION_PASSWORD")
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
-if not ADMIN_PASSWORD or not SECRET_KEY:
+if not ADMIN_PASSWORD:
+    raise RuntimeError("ADMIN_PASSWORD が設定されていません")
+
+if not RECEPTION_PASSWORD:
+    raise RuntimeError("RECEPTION_PASSWORD が設定されていません")
+
+if not SECRET_KEY or len(SECRET_KEY) < 32:
+    raise RuntimeError("SECRET_KEY は32文字以上にしてください")
+
+if hmac.compare_digest(
+    ADMIN_PASSWORD.encode(),
+    RECEPTION_PASSWORD.encode()
+):
     raise RuntimeError(
-        "ADMIN_PASSWORD と SECRET_KEY を設定してください"
+        "管理者パスワードと受付パスワードは別にしてください"
     )
 
-if len(SECRET_KEY) < 32:
-    raise RuntimeError(
-        "SECRET_KEY は32文字以上にしてください"
-    )
 
 app = Flask(__name__)
 
@@ -51,7 +63,7 @@ app.config.update(
     SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
-    MAX_CONTENT_LENGTH=16384,
+    MAX_CONTENT_LENGTH=16384
 )
 
 app.wsgi_app = ProxyFix(
@@ -61,29 +73,39 @@ app.wsgi_app = ProxyFix(
     x_host=1
 )
 
+
+# ==========================================
+# メモリ状態
+# ==========================================
+
 lock = threading.RLock()
 
 state = {
     "reception": False,
     "reception_last_seen": 0,
+    "reception_owner": None,
     "deadline": None,
     "next_player": 1,
     "current_qr": None,
     "qr_records": {},
     "players": {},
     "sessions": {},
-    "admin_sessions": {},
-    "generation": 0,
+    "staff_sessions": {},
+    "generation": 0
 }
 
 rate_limits = defaultdict(deque)
 
 
+# ==========================================
+# 共通関数
+# ==========================================
+
 def now():
     return time.time()
 
 
-def timestamp_jst():
+def jst_now():
     return datetime.now(JST)
 
 
@@ -98,18 +120,14 @@ def secure_equal(a, b):
     )
 
 
-def get_cookie(name):
-    return request.cookies.get(name)
-
-
-def set_secure_cookie(response, name, value, max_age=None):
+def set_cookie(response, name, value, max_age=None):
     response.set_cookie(
         name,
         value,
+        max_age=max_age,
         httponly=True,
         secure=True,
         samesite="Lax",
-        max_age=max_age,
         path="/"
     )
 
@@ -117,33 +135,25 @@ def set_secure_cookie(response, name, value, max_age=None):
 def clear_cookie(response, name):
     response.delete_cookie(
         name,
-        path="/",
         secure=True,
         httponly=True,
-        samesite="Lax"
+        samesite="Lax",
+        path="/"
     )
-
-
-def no_cache(response):
-    response.headers["Cache-Control"] = (
-        "no-store, no-cache, must-revalidate, private"
-    )
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
-    return response
 
 
 @app.after_request
 def security_headers(response):
-    no_cache(response)
 
+    response.headers["Cache-Control"] = (
+        "no-store, no-cache, must-revalidate, private"
+    )
+
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
-
-    response.headers["Permissions-Policy"] = (
-        "camera=(), microphone=(), geolocation=()"
-    )
 
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
@@ -167,6 +177,7 @@ def security_headers(response):
 
 
 def rate_limit(name, limit, window):
+
     ip = request.remote_addr or "unknown"
 
     key = (name, ip)
@@ -174,6 +185,7 @@ def rate_limit(name, limit, window):
     current = now()
 
     with lock:
+
         q = rate_limits[key]
 
         while q and current - q[0] > window:
@@ -187,45 +199,72 @@ def rate_limit(name, limit, window):
     return True
 
 
-def admin_session():
-    token = get_cookie("admin_session")
+# ==========================================
+# スタッフ認証
+# ==========================================
+
+def staff_session():
+
+    token = request.cookies.get("staff_session")
 
     if not token:
         return None
 
     with lock:
-        session = state["admin_sessions"].get(token)
+
+        session = state["staff_sessions"].get(token)
 
         if not session:
             return None
 
         if session["expires"] <= now():
-            state["admin_sessions"].pop(token, None)
+            state["staff_sessions"].pop(token, None)
             return None
 
         return session
 
 
-def admin_required(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        if not admin_session():
-            return jsonify({
-                "error": "admin_required"
-            }), 401
+def staff_token():
+    return request.cookies.get("staff_session")
 
-        return func(*args, **kwargs)
 
-    return wrapper
+def require_role(*roles):
+
+    def decorator(func):
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+
+            session = staff_session()
+
+            if not session:
+                return jsonify({
+                    "error": "authentication_required"
+                }), 401
+
+            if session["role"] not in roles:
+                return jsonify({
+                    "error": "permission_denied"
+                }), 403
+
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 def csrf_valid():
-    session = admin_session()
+
+    session = staff_session()
 
     if not session:
         return False
 
-    supplied = request.headers.get("X-CSRF-Token", "")
+    supplied = request.headers.get(
+        "X-CSRF-Token",
+        ""
+    )
 
     return secure_equal(
         supplied,
@@ -234,8 +273,10 @@ def csrf_valid():
 
 
 def csrf_required(func):
+
     @wraps(func)
     def wrapper(*args, **kwargs):
+
         if not csrf_valid():
             return jsonify({
                 "error": "csrf_failed"
@@ -246,7 +287,12 @@ def csrf_required(func):
     return wrapper
 
 
+# ==========================================
+# 受付状態
+# ==========================================
+
 def deadline_passed():
+
     deadline = state["deadline"]
 
     if deadline is None:
@@ -256,12 +302,17 @@ def deadline_passed():
 
 
 def reception_connected():
+
+    if not state["reception_owner"]:
+        return False
+
     return (
         now() - state["reception_last_seen"]
     ) < 10
 
 
 def reception_available():
+
     return (
         state["reception"]
         and reception_connected()
@@ -269,20 +320,8 @@ def reception_available():
     )
 
 
-def expire_players():
-    if not deadline_passed():
-        return
+def invalidate_qr():
 
-    for player in state["players"].values():
-        if player["status"] not in ("revoked", "expired"):
-            player["status"] = "expired"
-            player["revoked"] = True
-
-    state["reception"] = False
-    state["current_qr"] = None
-
-
-def invalidate_current_qr():
     qr = state["current_qr"]
 
     if qr:
@@ -291,11 +330,32 @@ def invalidate_current_qr():
     state["current_qr"] = None
 
 
+def expire_players():
+
+    if not deadline_passed():
+        return
+
+    for player in state["players"].values():
+
+        if player["status"] not in (
+            "revoked",
+            "expired"
+        ):
+
+            player["status"] = "expired"
+            player["revoked"] = True
+
+    state["reception"] = False
+
+    invalidate_qr()
+
+
 def generate_qr():
+
     if not reception_available():
         return None
 
-    invalidate_current_qr()
+    invalidate_qr()
 
     player_number = state["next_player"]
 
@@ -318,7 +378,7 @@ def generate_qr():
         "issued": issued,
         "expires": expires,
         "used": False,
-        "invalidated": False,
+        "invalidated": False
     }
 
     state["current_qr"] = qr
@@ -330,13 +390,15 @@ def generate_qr():
     return qr
 
 
-def ensure_current_qr():
+def ensure_qr():
+
     if not reception_available():
         return None
 
     qr = state["current_qr"]
 
     if qr:
+
         if (
             qr["used"]
             or qr["invalidated"]
@@ -350,8 +412,35 @@ def ensure_current_qr():
     return qr
 
 
+def qr_public(qr):
+
+    if not qr:
+        return None
+
+    return {
+        "player_id": qr["player_id"],
+        "url": url_for(
+            "play",
+            key=qr["key"],
+            player=qr["player_id"],
+            _external=True,
+            _scheme="https"
+        ),
+        "remaining_seconds": max(
+            0,
+            int(qr["expires"] - now())
+        ),
+        "generation": state["generation"]
+    }
+
+
+# ==========================================
+# プレイヤー管理
+# ==========================================
+
 def player_from_cookie():
-    token = get_cookie("play_session")
+
+    token = request.cookies.get("play_session")
 
     if not token:
         return None
@@ -361,9 +450,9 @@ def player_from_cookie():
     if not session:
         return None
 
-    player_id = session["player_id"]
-
-    player = state["players"].get(player_id)
+    player = state["players"].get(
+        session["player_id"]
+    )
 
     if not player:
         return None
@@ -378,12 +467,15 @@ def player_from_cookie():
 
 
 def player_allowed(player):
+
     if not player:
         return False, "invalid_session"
 
     if deadline_passed():
+
         player["status"] = "expired"
         player["revoked"] = True
+
         return False, "time_expired"
 
     if player["revoked"]:
@@ -393,7 +485,11 @@ def player_allowed(player):
 
 
 def public_player(player):
-    current = now()
+
+    elapsed = max(
+        0,
+        int(now() - player["last_seen"])
+    )
 
     if player["status"] == "expired":
         status = "expired"
@@ -401,7 +497,7 @@ def public_player(player):
     elif player["revoked"]:
         status = "revoked"
 
-    elif current - player["last_seen"] >= 15:
+    elif elapsed >= 15:
         status = "disconnected"
 
     else:
@@ -410,41 +506,70 @@ def public_player(player):
     return {
         "player_id": player["player_id"],
         "status": status,
-        "last_seen_seconds": int(
-            current - player["last_seen"]
-        ),
+        "last_seen_seconds": elapsed
     }
 
+
+# ==========================================
+# ログイン
+# ==========================================
 
 @app.route("/")
 def index():
     return redirect(url_for("admin"))
 
 
-@app.route("/admin", methods=["GET"])
+@app.route("/admin")
 def admin():
-    session = admin_session()
+
+    session = staff_session()
 
     if not session:
-        return render_template("admin_login.html")
+        return render_template(
+            "admin_login.html"
+        )
 
-    return render_template(
-        "admin.html",
-        csrf=session["csrf"]
+    if session["role"] == "admin":
+        return redirect(
+            url_for("admin_dashboard")
+        )
+
+    return redirect(
+        url_for("reception_page")
     )
 
 
 @app.route("/admin/login", methods=["POST"])
 def admin_login():
-    if not rate_limit("admin_login", 10, 300):
+
+    if not rate_limit("staff_login", 10, 300):
+
         return render_template(
             "error.html",
             message="ログイン試行回数が多すぎます。"
         ), 429
 
-    password = request.form.get("password", "")
+    password = request.form.get(
+        "password",
+        ""
+    )
 
-    if not secure_equal(password, ADMIN_PASSWORD):
+    if secure_equal(
+        password,
+        ADMIN_PASSWORD
+    ):
+
+        role = "admin"
+
+    elif secure_equal(
+        password,
+        RECEPTION_PASSWORD
+    ):
+
+        role = "reception"
+
+    else:
+
         return render_template(
             "admin_login.html",
             error="パスワードが違います"
@@ -455,56 +580,134 @@ def admin_login():
     csrf = random_token()
 
     with lock:
-        state["admin_sessions"][token] = {
+
+        state["staff_sessions"][token] = {
+            "role": role,
             "csrf": csrf,
-            "expires": now() + 12 * 3600,
+            "expires": now() + 12 * 3600
         }
 
     response = make_response(
         redirect(url_for("admin"))
     )
 
-    set_secure_cookie(
+    set_cookie(
         response,
-        "admin_session",
+        "staff_session",
         token,
-        max_age=12 * 3600
+        12 * 3600
     )
 
     return response
 
 
 @app.route("/admin/logout", methods=["POST"])
-@admin_required
+@require_role("admin", "reception")
 @csrf_required
 def admin_logout():
-    token = get_cookie("admin_session")
+
+    token = staff_token()
 
     with lock:
-        state["admin_sessions"].pop(token, None)
 
-    response = jsonify({"ok": True})
+        state["staff_sessions"].pop(
+            token,
+            None
+        )
 
-    clear_cookie(response, "admin_session")
+    response = jsonify({
+        "ok": True
+    })
+
+    clear_cookie(
+        response,
+        "staff_session"
+    )
 
     return response
 
 
-@app.route("/api/admin/start", methods=["POST"])
-@admin_required
+# ==========================================
+# 管理者画面
+# ==========================================
+
+@app.route("/admin/dashboard")
+def admin_dashboard():
+
+    session = staff_session()
+
+    if not session:
+        return redirect(url_for("admin"))
+
+    if session["role"] != "admin":
+        return redirect(
+            url_for("reception_page")
+        )
+
+    return render_template(
+        "admin.html",
+        csrf=session["csrf"]
+    )
+
+
+# ==========================================
+# 受付専用画面
+# ==========================================
+
+@app.route("/reception")
+def reception_page():
+
+    session = staff_session()
+
+    if not session:
+        return redirect(url_for("admin"))
+
+    if session["role"] != "reception":
+        return redirect(
+            url_for("admin_dashboard")
+        )
+
+    return render_template(
+        "reception.html",
+        csrf=session["csrf"]
+    )
+
+
+# ==========================================
+# 受付開始
+# ==========================================
+
+@app.route(
+    "/api/admin/start",
+    methods=["POST"]
+)
+@require_role("admin")
 @csrf_required
 def start_reception():
-    data = request.get_json(silent=True) or {}
 
-    end_time = data.get("end_time", "")
+    data = request.get_json(
+        silent=True
+    ) or {}
+
+    end_time = data.get(
+        "end_time",
+        ""
+    )
 
     try:
-        hour, minute = map(int, end_time.split(":"))
 
-        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        hour, minute = map(
+            int,
+            end_time.split(":")
+        )
+
+        if not (
+            0 <= hour <= 23
+            and 0 <= minute <= 59
+        ):
             raise ValueError()
 
-        current = timestamp_jst()
+        current = jst_now()
 
         deadline = current.replace(
             hour=hour,
@@ -514,54 +717,118 @@ def start_reception():
         )
 
         if deadline <= current:
+
             return jsonify({
                 "error": "終了時刻は現在より後にしてください"
             }), 400
 
     except (ValueError, TypeError):
+
         return jsonify({
             "error": "時刻の形式が正しくありません"
         }), 400
 
     with lock:
-        expire_players()
 
         state["deadline"] = deadline.timestamp()
+
         state["reception"] = True
-        state["reception_last_seen"] = now()
 
-        invalidate_current_qr()
+        state["reception_owner"] = None
 
-        qr = generate_qr()
+        state["reception_last_seen"] = 0
+
+        invalidate_qr()
 
     return jsonify({
-        "ok": True,
-        "player_id": qr["player_id"]
+        "ok": True
     })
 
 
-@app.route("/api/admin/stop", methods=["POST"])
-@admin_required
+# ==========================================
+# 受付終了
+# ==========================================
+
+@app.route(
+    "/api/admin/stop",
+    methods=["POST"]
+)
+@require_role("admin")
 @csrf_required
 def stop_reception():
+
     with lock:
+
         state["reception"] = False
 
-        invalidate_current_qr()
+        invalidate_qr()
 
-    return jsonify({"ok": True})
+    return jsonify({
+        "ok": True
+    })
 
 
-@app.route("/api/admin/heartbeat", methods=["POST"])
-@admin_required
+# ==========================================
+# 受付PCハートビート
+# ==========================================
+
+@app.route(
+    "/api/reception/heartbeat",
+    methods=["POST"]
+)
+@require_role("reception")
 @csrf_required
-def admin_heartbeat():
+def reception_heartbeat():
+
+    token = staff_token()
+
     with lock:
+
         expire_players()
+
+        # 受付PCを登録
+        if state["reception_owner"] is None:
+
+            state["reception_owner"] = token
+
+        # 他の受付セッションによる乗っ取りを防ぐ
+        if not secure_equal(
+            state["reception_owner"],
+            token
+        ):
+
+            return jsonify({
+                "error": "another_reception_active"
+            }), 409
 
         state["reception_last_seen"] = now()
 
-        qr = ensure_current_qr()
+        qr = ensure_qr()
+
+        return jsonify({
+            "ok": True,
+            "reception": state["reception"],
+            "qr": qr_public(qr),
+            "deadline": state["deadline"],
+            "server_time": now()
+        })
+
+
+# ==========================================
+# 管理者ハートビート
+# ==========================================
+
+@app.route(
+    "/api/admin/heartbeat",
+    methods=["POST"]
+)
+@require_role("admin")
+@csrf_required
+def admin_heartbeat():
+
+    with lock:
+
+        expire_players()
 
         players = [
             public_player(player)
@@ -570,80 +837,104 @@ def admin_heartbeat():
 
         playing_count = sum(
             1
-            for p in players
-            if p["status"] == "playing"
+            for player in players
+            if player["status"] == "playing"
         )
-
-        qr_data = None
-
-        if qr:
-            qr_data = {
-                "player_id": qr["player_id"],
-                "url": url_for(
-                    "play",
-                    key=qr["key"],
-                    player=qr["player_id"],
-                    _external=True,
-                    _scheme="https"
-                ),
-                "remaining_seconds": max(
-                    0,
-                    int(qr["expires"] - now())
-                ),
-                "generation": state["generation"]
-            }
 
         return jsonify({
             "connected": True,
             "reception": state["reception"],
+            "reception_connected": reception_connected(),
             "deadline": state["deadline"],
             "server_time": now(),
             "playing_count": playing_count,
             "players": players,
-            "qr": qr_data,
+            "qr": qr_public(
+                state["current_qr"]
+            )
         })
 
 
-@app.route("/api/admin/revoke/<player_id>", methods=["POST"])
-@admin_required
+# ==========================================
+# 個別停止
+# ==========================================
+
+@app.route(
+    "/api/admin/revoke/<player_id>",
+    methods=["POST"]
+)
+@require_role("admin")
 @csrf_required
 def revoke_player(player_id):
+
     with lock:
-        player = state["players"].get(player_id)
+
+        player = state["players"].get(
+            player_id
+        )
 
         if not player:
+
             return jsonify({
                 "error": "player_not_found"
             }), 404
 
         player["revoked"] = True
+
         player["status"] = "revoked"
 
-    return jsonify({"ok": True})
+    return jsonify({
+        "ok": True
+    })
 
 
-@app.route("/api/admin/revoke-all", methods=["POST"])
-@admin_required
+# ==========================================
+# 全員停止
+# ==========================================
+
+@app.route(
+    "/api/admin/revoke-all",
+    methods=["POST"]
+)
+@require_role("admin")
 @csrf_required
 def revoke_all():
+
     with lock:
+
         for player in state["players"].values():
+
             player["revoked"] = True
+
             player["status"] = "revoked"
 
-    return jsonify({"ok": True})
+    return jsonify({
+        "ok": True
+    })
 
+
+# ==========================================
+# QRコードアクセス
+# ==========================================
 
 @app.route("/play")
 def play():
-    key = request.args.get("key", "")
-    player_id = request.args.get("player", "")
+
+    key = request.args.get(
+        "key",
+        ""
+    )
+
+    player_id = request.args.get(
+        "player",
+        ""
+    )
 
     if not key or not player_id:
-        return redirect(url_for("game"))
+        return redirect(
+            url_for("game")
+        )
 
-    # keyを含むURLで認証結果のHTMLを直接返さない。
-    # 最初にローディング画面を返し、POSTで消費する。
     return render_template(
         "loading.html",
         key=key,
@@ -651,39 +942,68 @@ def play():
     )
 
 
-@app.route("/api/player/claim", methods=["POST"])
+# ==========================================
+# QRコード認証
+# ==========================================
+
+@app.route(
+    "/api/player/claim",
+    methods=["POST"]
+)
 def claim():
-    if not rate_limit("claim", 60, 60):
+
+    if not rate_limit(
+        "claim",
+        60,
+        60
+    ):
+
         return jsonify({
             "error": "rate_limited"
         }), 429
 
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(
+        silent=True
+    ) or {}
 
-    key = data.get("key", "")
-    player_id = data.get("player", "")
+    key = data.get(
+        "key",
+        ""
+    )
+
+    player_id = data.get(
+        "player",
+        ""
+    )
 
     with lock:
+
         expire_players()
 
-        qr = state["qr_records"].get(key)
+        qr = state["qr_records"].get(
+            key
+        )
 
         if not qr:
+
             return jsonify({
                 "error": "invalid"
             }), 403
 
         if qr["used"]:
+
             return jsonify({
                 "error": "used"
             }), 403
 
         if qr["invalidated"]:
+
             return jsonify({
                 "error": "expired"
             }), 403
 
         if now() >= qr["expires"]:
+
             qr["invalidated"] = True
 
             return jsonify({
@@ -691,21 +1011,24 @@ def claim():
             }), 403
 
         if not reception_available():
+
             return jsonify({
                 "error": "reception_closed"
             }), 403
 
         if qr["player_id"] != player_id:
+
             return jsonify({
                 "error": "invalid"
             }), 403
 
         if state["current_qr"] is not qr:
+
             return jsonify({
                 "error": "expired"
             }), 403
 
-        # このロック内で認証・使用済み化・セッション発行を完了する。
+        # 先着1人限定
         qr["used"] = True
 
         session_id = random_token()
@@ -716,7 +1039,7 @@ def claim():
             "status": "playing",
             "last_seen": now(),
             "expires_at": state["deadline"],
-            "revoked": False,
+            "revoked": False
         }
 
         state["players"][player_id] = player
@@ -725,7 +1048,7 @@ def claim():
             "player_id": player_id
         }
 
-        # 次のQRを即座に発行する。
+        # 次のQRを即時発行
         generate_qr()
 
     response = jsonify({
@@ -733,7 +1056,7 @@ def claim():
         "redirect": url_for("game")
     })
 
-    set_secure_cookie(
+    set_cookie(
         response,
         "play_session",
         session_id
@@ -742,16 +1065,25 @@ def claim():
     return response
 
 
+# ==========================================
+# ゲーム画面
+# ==========================================
+
 @app.route("/game")
 def game():
+
     with lock:
+
         expire_players()
 
         player = player_from_cookie()
 
-        allowed, reason = player_allowed(player)
+        allowed, reason = player_allowed(
+            player
+        )
 
         if not allowed:
+
             return render_template(
                 "expired.html",
                 reason=reason
@@ -765,16 +1097,28 @@ def game():
         )
 
 
-@app.route("/api/player/heartbeat", methods=["POST"])
+# ==========================================
+# プレイヤーハートビート
+# ==========================================
+
+@app.route(
+    "/api/player/heartbeat",
+    methods=["POST"]
+)
 def player_heartbeat():
+
     with lock:
+
         expire_players()
 
         player = player_from_cookie()
 
-        allowed, reason = player_allowed(player)
+        allowed, reason = player_allowed(
+            player
+        )
 
         if not allowed:
+
             return jsonify({
                 "allowed": False,
                 "reason": reason
@@ -786,7 +1130,9 @@ def player_heartbeat():
 
         remaining = max(
             0,
-            int(state["deadline"] - now())
+            int(
+                state["deadline"] - now()
+            )
         )
 
         return jsonify({
@@ -796,10 +1142,24 @@ def player_heartbeat():
         })
 
 
+# ==========================================
+# 管理者ゲーム
+# ==========================================
+
 @app.route("/admin/game")
 def admin_game():
-    if not admin_session():
-        return redirect(url_for("admin"))
+
+    session = staff_session()
+
+    if not session:
+        return redirect(
+            url_for("admin")
+        )
+
+    if session["role"] != "admin":
+        return redirect(
+            url_for("reception_page")
+        )
 
     return render_template(
         "game.html",
@@ -809,17 +1169,26 @@ def admin_game():
     )
 
 
-@app.route("/api/admin/game-check", methods=["POST"])
-@admin_required
+@app.route(
+    "/api/admin/game-check",
+    methods=["POST"]
+)
+@require_role("admin")
 def admin_game_check():
+
     return jsonify({
         "allowed": True,
         "admin": True
     })
 
 
+# ==========================================
+# エラー
+# ==========================================
+
 @app.errorhandler(404)
 def not_found(error):
+
     return render_template(
         "error.html",
         message="ページが見つかりません"
@@ -828,6 +1197,7 @@ def not_found(error):
 
 @app.errorhandler(500)
 def server_error(error):
+
     return render_template(
         "error.html",
         message="サーバーエラーが発生しました"
@@ -835,7 +1205,13 @@ def server_error(error):
 
 
 if __name__ == "__main__":
+
     app.run(
         host="0.0.0.0",
-        port=int(os.environ.get("PORT", 5000))
+        port=int(
+            os.environ.get(
+                "PORT",
+                5000
+            )
+        )
     )
