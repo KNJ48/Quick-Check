@@ -1,14 +1,66 @@
-const config = window.GAME_CONFIG;
+"use strict";
 
-const container = document.getElementById("gameContainer");
+// ========================================
+// 科学技術部 ゲーム制御システム
+// ========================================
 
-const overlay = document.getElementById("gameOverlay");
 
-const overlayTitle = document.getElementById("overlayTitle");
+// ========================================
+// 設定取得
+// ========================================
 
-const overlayMessage = document.getElementById("overlayMessage");
+function getMeta(name) {
 
-const remainingLabel = document.getElementById("remainingTime");
+    const element = document.querySelector(
+        `meta[name="${name}"]`
+    );
+
+    return element
+        ? element.getAttribute("content")
+        : null;
+}
+
+
+const config = {
+
+    playerId: getMeta("game-player-id"),
+
+    adminMode:
+        getMeta("game-admin-mode") === "true",
+
+    gameUrl: getMeta("game-url")
+
+};
+
+
+// ========================================
+// DOM
+// ========================================
+
+const container = document.getElementById(
+    "gameContainer"
+);
+
+const overlay = document.getElementById(
+    "gameOverlay"
+);
+
+const overlayTitle = document.getElementById(
+    "overlayTitle"
+);
+
+const overlayMessage = document.getElementById(
+    "overlayMessage"
+);
+
+const remainingLabel = document.getElementById(
+    "remainingTime"
+);
+
+
+// ========================================
+// 状態管理
+// ========================================
 
 let lastSuccess = 0;
 
@@ -22,12 +74,30 @@ let permanentlyStopped = false;
 
 let iframe = null;
 
+let connectionBlocked = false;
+
+
+// ========================================
+// iframe生成
+// ========================================
 
 function createGameIframe() {
 
     if (iframe || permanentlyStopped) {
         return;
     }
+
+    if (!config.gameUrl) {
+
+        blockGame(
+            "ゲームを起動できません",
+            "ゲームURLが設定されていません。",
+            true
+        );
+
+        return;
+    }
+
 
     iframe = document.createElement("iframe");
 
@@ -46,6 +116,10 @@ function createGameIframe() {
 }
 
 
+// ========================================
+// iframe削除
+// ========================================
+
 function removeGameIframe() {
 
     if (iframe) {
@@ -56,6 +130,10 @@ function removeGameIframe() {
     }
 }
 
+
+// ========================================
+// 停止画面
+// ========================================
 
 function showOverlay(title, message) {
 
@@ -73,7 +151,15 @@ function hideOverlay() {
 }
 
 
-function blockGame(title, message, permanent = false) {
+// ========================================
+// ゲーム停止
+// ========================================
+
+function blockGame(
+    title,
+    message,
+    permanent = false
+) {
 
     removeGameIframe();
 
@@ -82,9 +168,15 @@ function blockGame(title, message, permanent = false) {
         permanentlyStopped = true;
     }
 
+    connectionBlocked = true;
+
     showOverlay(title, message);
 }
 
+
+// ========================================
+// 残り時間表示
+// ========================================
 
 function formatRemaining(seconds) {
 
@@ -105,6 +197,10 @@ function formatRemaining(seconds) {
 }
 
 
+// ========================================
+// サーバー時刻ベースの残り時間
+// ========================================
+
 function remainingNow() {
 
     if (remainingSeconds === null) {
@@ -112,7 +208,10 @@ function remainingNow() {
     }
 
     const elapsed =
-        (performance.now() - remainingReference) / 1000;
+        (
+            performance.now() -
+            remainingReference
+        ) / 1000;
 
     return Math.max(
         0,
@@ -120,6 +219,10 @@ function remainingNow() {
     );
 }
 
+
+// ========================================
+// タイマー更新
+// ========================================
 
 function updateTimer() {
 
@@ -141,10 +244,15 @@ function updateTimer() {
         return;
     }
 
+
     remainingLabel.textContent =
         "残り時間 " +
-        formatRemaining(Math.ceil(remaining));
+        formatRemaining(
+            Math.ceil(remaining)
+        );
 
+
+    // 終了時刻に到達
     if (remaining <= 0) {
 
         blockGame(
@@ -156,44 +264,77 @@ function updateTimer() {
 }
 
 
+// ========================================
+// ハートビート
+// ========================================
+
 async function heartbeat() {
 
-    if (heartbeatRunning || permanentlyStopped) {
+    if (
+        heartbeatRunning ||
+        permanentlyStopped
+    ) {
         return;
     }
 
     heartbeatRunning = true;
 
+
     const endpoint = config.adminMode
         ? "/api/admin/game-check"
         : "/api/player/heartbeat";
 
+
     const controller = new AbortController();
+
 
     const timeout = setTimeout(
         () => controller.abort(),
         8000
     );
 
+
     try {
 
-        const response = await fetch(endpoint, {
+        const response = await fetch(
+            endpoint,
+            {
 
-            method: "POST",
+                method: "POST",
 
-            credentials: "same-origin",
+                credentials: "same-origin",
 
-            cache: "no-store",
+                cache: "no-store",
 
-            signal: controller.signal
+                signal: controller.signal
 
-        });
+            }
+        );
 
-        const data = await response.json();
 
-        if (!response.ok || !data.allowed) {
+        let data;
 
-            const reason = data.reason || "invalid_session";
+        try {
+
+            data = await response.json();
+
+        } catch (error) {
+
+            throw new Error(
+                "invalid_json_response"
+            );
+        }
+
+
+        // 認証失敗
+        if (
+            !response.ok ||
+            !data.allowed
+        ) {
+
+            const reason =
+                data.reason || "invalid_session";
+
 
             if (reason === "time_expired") {
 
@@ -223,31 +364,56 @@ async function heartbeat() {
             return;
         }
 
+
+        // 認証成功
         lastSuccess = performance.now();
 
+        connectionBlocked = false;
+
+
+        // 一般生徒モード
         if (!config.adminMode) {
 
-            remainingSeconds = data.remaining_seconds;
+            remainingSeconds =
+                data.remaining_seconds;
 
-            remainingReference = performance.now();
+            remainingReference =
+                performance.now();
         }
+
 
         hideOverlay();
 
         createGameIframe();
 
+
     } catch (error) {
 
-        const elapsed =
-            (performance.now() - lastSuccess) / 1000;
+        console.error(
+            "ハートビート通信エラー:",
+            error
+        );
 
-        if (elapsed >= 15) {
+
+        const elapsed =
+            (
+                performance.now() -
+                lastSuccess
+            ) / 1000;
+
+
+        // 15秒以上通信できない
+        if (
+            lastSuccess === 0 ||
+            elapsed >= 15
+        ) {
 
             blockGame(
                 "サーバーとの接続を確認しています",
                 "通信が回復するまでお待ちください。"
             );
         }
+
 
     } finally {
 
@@ -258,42 +424,46 @@ async function heartbeat() {
 }
 
 
+// ========================================
+// 接続監視
+// ========================================
+
 function monitorConnection() {
 
     if (permanentlyStopped) {
         return;
     }
 
+
     if (!lastSuccess) {
         return;
     }
 
+
     const elapsed =
-        (performance.now() - lastSuccess) / 1000;
+        (
+            performance.now() -
+            lastSuccess
+        ) / 1000;
+
 
     if (elapsed >= 15) {
 
-        blockGame(
-            "サーバーとの接続を確認しています",
-            "通信が回復するまでお待ちください。"
-        );
+        if (!connectionBlocked) {
+
+            blockGame(
+                "サーバーとの接続を確認しています",
+                "通信が回復するまでお待ちください。"
+            );
+        }
     }
 }
 
 
-// 初回はサーバーの許可を確認してからiframeを生成する。
-heartbeat();
+// ========================================
+// タブ復帰時
+// ========================================
 
-// 5秒ごとにハートビート
-setInterval(heartbeat, 5000);
-
-// 残り時間表示
-setInterval(updateTimer, 250);
-
-// 通信切断監視
-setInterval(monitorConnection, 1000);
-
-// タブ復帰時に再確認
 document.addEventListener(
     "visibilitychange",
     () => {
@@ -304,3 +474,51 @@ document.addEventListener(
         }
     }
 );
+
+
+// ========================================
+// 初期化
+// ========================================
+
+function initialize() {
+
+    if (!config.playerId || !config.gameUrl) {
+
+        blockGame(
+            "ゲーム設定エラー",
+            "ゲームの設定情報を取得できませんでした。",
+            true
+        );
+
+        return;
+    }
+
+
+    // 初回はサーバー認証後にiframe生成
+    heartbeat();
+
+
+    // 5秒ごとのハートビート
+    setInterval(
+        heartbeat,
+        5000
+    );
+
+
+    // 残り時間更新
+    setInterval(
+        updateTimer,
+        250
+    );
+
+
+    // 接続監視
+    setInterval(
+        monitorConnection,
+        1000
+    );
+}
+
+
+// 起動
+initialize();
