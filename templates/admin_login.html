@@ -2,13 +2,22 @@
 <html lang="ja">
 
 <head>
+
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
 
-<title>科学技術部 管理者ログイン</title>
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+>
 
-<link rel="stylesheet"
-href="{{ url_for('static', filename='css/style.css') }}">
+<title>
+科学技術部 スタッフログイン
+</title>
+
+<link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='css/style.css') }}"
+>
 
 </head>
 
@@ -16,33 +25,48 @@ href="{{ url_for('static', filename='css/style.css') }}">
 
 <div class="login-card">
 
-<h1>科学技術部</h1>
+    <h1>
+        科学技術部
+    </h1>
 
-<h2>ゲーム管理システム</h2>
+    <h2>
+        ゲーム発表会
+    </h2>
 
-<p>管理者ログイン</p>
+    <p>
+        スタッフログイン
+    </p>
 
-{% if error %}
-<div class="error-message">
-{{ error }}
-</div>
-{% endif %}
+    <p>
+        管理者または受付担当のパスワードを入力してください。
+    </p>
 
-<form method="POST" action="/admin/login">
+    {% if error %}
 
-<input
-type="password"
-name="password"
-placeholder="管理者パスワード"
-required
-autocomplete="current-password"
->
+    <div class="error-message">
+        {{ error }}
+    </div>
 
-<button type="submit">
-ログイン
-</button>
+    {% endif %}
 
-</form>
+    <form
+        method="POST"
+        action="/admin/login"
+    >
+
+        <input
+            type="password"
+            name="password"
+            placeholder="スタッフパスワード"
+            required
+            autocomplete="current-password"
+        >
+
+        <button type="submit">
+            ログイン
+        </button>
+
+    </form>
 
 </div>
 
