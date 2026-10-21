@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+content="width=device-width, initial-scale=1">
+
+<title>プレイ終了</title>
+
+<link rel="stylesheet"
+href="{{ url_for('static', filename='css/style.css') }}">
+
+</head>
+
+<body class="center-body">
+
+<div class="message-card">
+
+<h1>ゲームを開始できません</h1>
+
+{% if reason == "time_expired" %}
+
+<p>公開時間は終了しました。</p>
+
+<p>遊んでくれてありがとう！</p>
+
+{% elif reason == "revoked" %}
+
+<p>管理者によってプレイが停止されました。</p>
+
+{% else %}
+
+<p>有効なプレイセッションがありません。</p>
+
+<p>受付のQRコードを読み込んでください。</p>
+
+{% endif %}
+
+<h2>科学技術部</h2>
+
+</div>
+
+</body>
+</html>

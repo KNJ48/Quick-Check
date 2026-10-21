@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+>
+
+<title>
+科学技術部 ゲーム認証
+</title>
+
+<link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='css/style.css') }}"
+>
+
+<!-- 認証情報 -->
+<meta
+    name="claim-key"
+    content="{{ key }}"
+>
+
+<meta
+    name="claim-player"
+    content="{{ player_id }}"
+>
+
+<!-- 認証JavaScript -->
+<script
+    src="{{ url_for('static', filename='js/loading.js') }}"
+    defer
+></script>
+
+</head>
+
+<body class="center-body">
+
+<div class="message-card">
+
+    <h1>
+        科学技術部
+    </h1>
+
+    <h2>
+        ゲーム認証
+    </h2>
+
+    <div
+        id="loadingSpinner"
+        class="spinner"
+    ></div>
+
+    <h3 id="loadingTitle">
+        認証しています...
+    </h3>
+
+    <p id="loadingMessage">
+        しばらくお待ちください。
+    </p>
+
+</div>
+
+</body>
+</html>
