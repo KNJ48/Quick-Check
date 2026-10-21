@@ -1,82 +1,88 @@
-\# 科学技術部 ゲーム認証管理システム
+# 科学技術部 ゲーム認証管理システム
 
+学校の科学技術部ゲーム発表会向けの、
+QRコード認証管理システムです。
 
+## ログイン権限
 
-学校の科学技術部のゲーム発表会用に作成した、
+2種類のパスワードを使用します。
 
-QRコード認証・プレイヤー管理システムです。
+### 管理者
 
+環境変数:
 
+ADMIN_PASSWORD
 
-\## 主な機能
+利用できる機能:
 
+- 受付開始
+- 受付終了
+- 昼休み終了時刻設定
+- プレイヤー一覧
+- 個別停止
+- 全員停止
+- 管理者としてゲーム起動
 
+ログイン後:
 
-\- 管理者ログイン
+/admin/dashboard
 
-\- QRコード自動生成
+### 受付担当
 
-\- 先着1人限定認証
+環境変数:
 
-\- QRコード15分有効
+RECEPTION_PASSWORD
 
-\- プレイヤーID連番発行
+利用できる機能:
 
-\- プレイヤーセッション管理
+- 受付専用QRコード画面
+- QRコード自動更新
+- 受付PCハートビート
 
-\- 5秒ごとのハートビート
+ログイン後:
 
-\- 受付PCの3秒ごとのハートビート
+/reception
 
-\- プレイヤー個別停止
+受付担当はプレイヤー停止APIを使用できません。
 
-\- 全員停止
+## 必要な環境変数
 
-\- 昼休み終了時刻による自動停止
+ADMIN_PASSWORD
 
-\- 管理者用ゲーム画面
+管理者用パスワード。
 
-\- GitHub Pagesのiframe表示
+RECEPTION_PASSWORD
 
+受付担当用パスワード。
 
-
-\## 必要な環境変数
-
-
-
-ADMIN\_PASSWORD
-
-
-
-管理者ログイン用パスワード。
-
-
-
-SECRET\_KEY
-
-
+SECRET_KEY
 
 Flask用の秘密鍵。
 
+32文字以上にしてください。
 
+管理者パスワードと受付パスワードは
+異なる値にしてください。
 
-32文字以上の推測困難な値を設定してください。
+## Renderへのデプロイ
 
+GitHubにファイルをアップロードします。
 
+RenderのBlueprintまたはWeb Serviceでデプロイします。
 
-\## ローカル起動
+RenderのEnvironmentに次の値を設定してください。
 
+ADMIN_PASSWORD
 
+RECEPTION_PASSWORD
 
-Python 3.11以上を推奨します。
+SECRET_KEY
 
+SECRET_KEYはrender.yamlのgenerateValueを使用できます。
 
+## Gunicorn
 
-依存パッケージをインストールします。
-
-
+必ず1ワーカーで起動します。
 
 ```bash
-
-pip install -r requirements.txt
-
+gunicorn app:app --workers 1 --threads 8 --bind 0.0.0.0:$PORT
