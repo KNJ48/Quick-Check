@@ -5,64 +5,87 @@
 
 <meta charset="UTF-8">
 
-<meta name="viewport"
-content="width=device-width, initial-scale=1">
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+>
 
 <title>科学技術部 ゲーム</title>
 
-<link rel="stylesheet"
-href="{{ url_for('static', filename='css/style.css') }}">
+<link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='css/style.css') }}"
+>
 
-<script>
-window.GAME_CONFIG = {
-    playerId: {{ player_id | tojson }},
-    adminMode: {{ admin_mode | tojson }},
-    gameUrl: {{ game_url | tojson }}
-};
-</script>
+<!-- ゲーム設定 -->
+<meta
+    name="game-player-id"
+    content="{{ player_id }}"
+>
 
+<meta
+    name="game-admin-mode"
+    content="{{ 'true' if admin_mode else 'false' }}"
+>
+
+<meta
+    name="game-url"
+    content="{{ game_url }}"
+>
+
+<!-- ゲーム制御 -->
 <script
-src="{{ url_for('static', filename='js/game.js') }}"
-defer>
-</script>
+    src="{{ url_for('static', filename='js/game.js') }}"
+    defer
+></script>
 
 </head>
 
 <body class="game-body">
 
+<!-- ゲーム表示領域 -->
 <div id="gameContainer"></div>
 
+<!-- プレイヤー情報 -->
 <div id="gameHud">
 
-<span id="playerLabel">
-PLAYER {{ player_id }}
-</span>
+    <span id="playerLabel">
+        PLAYER {{ player_id }}
+    </span>
 
-<span id="remainingTime">
-{% if admin_mode %}
-時間制限なし
-{% else %}
-確認中...
-{% endif %}
-</span>
+    <span id="remainingTime">
 
-</div>
+        {% if admin_mode %}
+            時間制限なし
+        {% else %}
+            確認中...
+        {% endif %}
 
-<div id="gameOverlay" class="game-overlay hidden">
-
-<div class="message-card">
-
-<h1 id="overlayTitle">
-公開時間は終了しました。
-</h1>
-
-<p id="overlayMessage">
-遊んでくれてありがとう！
-</p>
-
-<h2>科学技術部</h2>
+    </span>
 
 </div>
+
+<!-- 停止・終了画面 -->
+<div
+    id="gameOverlay"
+    class="game-overlay hidden"
+>
+
+    <div class="message-card">
+
+        <h1 id="overlayTitle">
+            公開時間は終了しました。
+        </h1>
+
+        <p id="overlayMessage">
+            遊んでくれてありがとう！
+        </p>
+
+        <h2>
+            科学技術部
+        </h2>
+
+    </div>
 
 </div>
 
