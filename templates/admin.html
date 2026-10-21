@@ -2,29 +2,28 @@
 <html lang="ja">
 
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
 
-<title>科学技術部 ゲーム管理</title>
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+>
+
+<title>
+科学技術部 管理者画面
+</title>
 
 <link
     rel="stylesheet"
     href="{{ url_for('static', filename='css/style.css') }}"
 >
 
-<!-- CSRFトークンを安全にJavaScriptへ渡す -->
 <meta
     name="csrf-token"
     content="{{ csrf }}"
 >
 
-<!-- QRコード生成ライブラリ -->
-<script
-    src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
-    defer
-></script>
-
-<!-- 管理画面 -->
 <script
     src="{{ url_for('static', filename='js/admin.js') }}"
     defer
@@ -37,8 +36,15 @@
 <header class="header">
 
     <div>
-        <h1>科学技術部</h1>
-        <p>ゲーム発表会 管理システム</p>
+
+        <h1>
+            科学技術部
+        </h1>
+
+        <p>
+            ゲーム発表会 管理者画面
+        </p>
+
     </div>
 
     <div class="header-actions">
@@ -47,11 +53,10 @@
             接続確認中
         </span>
 
-        <button id="fullscreenButton" type="button">
-            全画面表示
-        </button>
-
-        <button id="logoutButton" type="button">
+        <button
+            id="logoutButton"
+            type="button"
+        >
             ログアウト
         </button>
 
@@ -61,54 +66,10 @@
 
 <main class="admin-layout">
 
-    <!-- QRコード表示 -->
-    <section class="qr-panel">
-
-        <div class="panel-title">
-            受付QRコード
-        </div>
-
-        <div id="receptionStatus" class="status-badge">
-            受付停止中
-        </div>
-
-        <h2 id="qrPlayer">
-            PLAYER ---
-        </h2>
-
-        <div class="qr-box">
-
-            <div id="qrcode"></div>
-
-            <div id="qrPlaceholder">
-                受付を開始してください
-            </div>
-
-        </div>
-
-        <div class="qr-timer">
-
-            QRコード残り有効時間
-
-            <strong id="qrRemaining">
-                --:--
-            </strong>
-
-        </div>
-
-        <p class="qr-description">
-            QRコードは先着1人限定です。<br>
-            認証後、自動的に次のQRコードへ切り替わります。
-        </p>
-
-    </section>
-
-
-    <!-- 受付設定 -->
     <section class="control-panel">
 
         <div class="panel-title">
-            受付設定
+            受付管理
         </div>
 
         <label for="endTime">
@@ -151,6 +112,13 @@
             </div>
 
             <div>
+                受付PC：
+                <strong id="receptionConnection">
+                    未接続
+                </strong>
+            </div>
+
+            <div>
                 現在プレイ中：
                 <strong id="playingCount">
                     0
@@ -179,7 +147,6 @@
     </section>
 
 
-    <!-- プレイヤー管理 -->
     <section class="players-panel">
 
         <div class="players-header">
