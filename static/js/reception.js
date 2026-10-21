@@ -45,7 +45,10 @@ async function apiPost(url) {
 
 function formatTime(seconds) {
 
-    seconds = Math.max(0, Math.floor(seconds));
+    seconds = Math.max(
+        0,
+        Math.floor(seconds)
+    );
 
     return (
         String(
@@ -114,7 +117,8 @@ function showQr(qr) {
     );
 
     qrExpireAt =
-        Date.now() + qr.remaining_seconds * 1000;
+        Date.now() +
+        qr.remaining_seconds * 1000;
 
     const area = document.querySelector(
         ".reception-qr-area"
@@ -199,47 +203,6 @@ async function poll() {
         polling = false;
     }
 }
-
-
-$("receptionFullscreen").addEventListener(
-    "click",
-    async () => {
-
-        try {
-
-            if (!document.fullscreenElement) {
-
-                await document.documentElement.requestFullscreen();
-
-            } else {
-
-                await document.exitFullscreen();
-            }
-
-        } catch (error) {
-
-            console.error(error);
-        }
-    }
-);
-
-
-$("receptionLogout").addEventListener(
-    "click",
-    async () => {
-
-        try {
-
-            await apiPost("/admin/logout");
-
-            location.replace("/admin");
-
-        } catch (error) {
-
-            alert(error.message);
-        }
-    }
-);
 
 
 setInterval(updateTimer, 250);
