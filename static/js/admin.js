@@ -588,7 +588,7 @@ function renderPlayers(players) {
 
             status.textContent =
                 statusLabel(player.status) +
-                "（プレイ時間：" +
+                "（接続から：" +
                 formatPlayTime(player.play_seconds) +
                 "）";
 
