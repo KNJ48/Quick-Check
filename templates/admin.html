@@ -161,6 +161,89 @@
         </div>
 
 
+        <!-- =================================
+             ゲームサイトURL設定
+        ================================= -->
+
+        <div class="game-url-settings">
+
+            <h3>
+                🎮 ゲームサイトURL設定
+            </h3>
+
+            <p>
+                現在設定されているゲームサイトのURL
+            </p>
+
+            <div
+                id="currentGameUrl"
+                style="
+                    overflow-wrap: anywhere;
+                    word-break: break-word;
+                    padding: 12px;
+                    background: rgba(128,128,128,0.12);
+                    border-radius: 8px;
+                    margin-bottom: 15px;
+                    font-size: 13px;
+                "
+            >
+                読み込み中...
+            </div>
+
+            <label for="gameUrlInput">
+                新しいゲームサイトURL
+            </label>
+
+            <input
+                type="url"
+                id="gameUrlInput"
+                placeholder="https://example.com/game.html"
+                autocomplete="off"
+                spellcheck="false"
+                maxlength="2048"
+                style="
+                    width: 100%;
+                    box-sizing: border-box;
+                    margin-top: 8px;
+                    margin-bottom: 12px;
+                "
+            >
+
+            <button
+                id="saveGameUrlButton"
+                class="primary-button"
+                type="button"
+            >
+                URLを変更する
+            </button>
+
+            <p
+                id="gameUrlMessage"
+                role="status"
+                aria-live="polite"
+                style="
+                    margin-top: 12px;
+                    overflow-wrap: anywhere;
+                "
+            ></p>
+
+            <p
+                style="
+                    font-size: 12px;
+                    opacity: 0.7;
+                    margin-top: 12px;
+                "
+            >
+                ※ HTTPSのURLのみ設定できます。
+                <br>
+                ※ 変更後、新しくゲームを開いた人から反映されます。
+                <br>
+                ※ Render再起動時には初期URLへ戻ります。
+            </p>
+
+        </div>
+
+
         <!-- 管理者ゲーム -->
 
         <a
