@@ -51,8 +51,6 @@ let gameUrlEdited = false;
 
 let gameUrlSaving = false;
 
-let gameUrlLastLoaded = null;
-
 
 // ========================================
 // 終了時刻編集
@@ -193,7 +191,6 @@ function formatPlayTime(seconds) {
     const remainingSeconds = seconds % 60;
 
     if (minutes === 0) {
-
         return remainingSeconds + "秒";
     }
 
@@ -274,11 +271,8 @@ function restoreGameUrl(data) {
 
     const currentUrl = data.game_url;
 
-    // 現在のURLは常に最新の情報を表示
     $("currentGameUrl").textContent =
         currentUrl;
-
-    gameUrlLastLoaded = currentUrl;
 
     // 編集中の入力内容は上書きしない
     if (gameUrlEdited || gameUrlSaving) {
@@ -386,8 +380,6 @@ $("saveGameUrlButton").addEventListener(
             );
 
             gameUrlEdited = false;
-
-            gameUrlLastLoaded = result.game_url;
 
             $("gameUrlInput").value =
                 result.game_url;
@@ -606,8 +598,59 @@ function renderPlayers(players) {
 
             row.appendChild(info);
 
-            if (
-                player.status !== "revoked" &&
+
+            // ==================================
+            // 停止解除ボタン
+            // ==================================
+
+            if (player.status === "revoked") {
+
+                const button = document.createElement("button");
+
+                button.className = "primary-button";
+
+                button.textContent = "停止解除";
+
+                button.addEventListener(
+                    "click",
+                    async () => {
+
+                        if (!confirm(
+                            "PLAYER " +
+                            player.player_id +
+                            " の停止を解除しますか？"
+                        )) {
+                            return;
+                        }
+
+                        try {
+
+                            await apiPost(
+                                "/api/admin/unrevoke/" +
+                                encodeURIComponent(
+                                    player.player_id
+                                )
+                            );
+
+                            await poll();
+
+                        } catch (error) {
+
+                            alert(error.message);
+                        }
+                    }
+                );
+
+                row.appendChild(button);
+
+            }
+
+
+            // ==================================
+            // プレイ停止ボタン
+            // ==================================
+
+            else if (
                 player.status !== "expired"
             ) {
 
