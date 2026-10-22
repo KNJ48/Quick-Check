@@ -40,13 +40,19 @@ RECEPTION_PASSWORD = os.environ.get("RECEPTION_PASSWORD")
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
 if not ADMIN_PASSWORD:
-    raise RuntimeError("ADMIN_PASSWORD が設定されていません")
+    raise RuntimeError(
+        "ADMIN_PASSWORD が設定されていません"
+    )
 
 if not RECEPTION_PASSWORD:
-    raise RuntimeError("RECEPTION_PASSWORD が設定されていません")
+    raise RuntimeError(
+        "RECEPTION_PASSWORD が設定されていません"
+    )
 
 if not SECRET_KEY or len(SECRET_KEY) < 32:
-    raise RuntimeError("SECRET_KEY は32文字以上にしてください")
+    raise RuntimeError(
+        "SECRET_KEY は32文字以上にしてください"
+    )
 
 if hmac.compare_digest(
     ADMIN_PASSWORD.encode(),
@@ -190,7 +196,10 @@ def valid_game_url(value):
         if port is not None and not (1 <= port <= 65535):
             return False
 
-        if any(char.isspace() for char in parsed.hostname):
+        if any(
+            char.isspace()
+            for char in parsed.hostname
+        ):
             return False
 
     except (ValueError, TypeError):
@@ -447,7 +456,7 @@ def player_play_seconds(player):
 
 
 # ==========================================
-# 時間切れ
+# 時間切れ・プレイヤー情報削除
 # ==========================================
 
 def expire_players():
@@ -455,20 +464,20 @@ def expire_players():
     if not deadline_passed():
         return
 
-    for player in state["players"].values():
-
-        if player["status"] not in ("revoked", "expired"):
-
-            stop_player_timer(
-                player,
-                state["deadline"]
-            )
-
-            player["status"] = "expired"
-            player["revoked"] = True
-
+    # 終了時刻を過ぎたら受付停止
     state["reception"] = False
+
+    # 現在のQRコードを無効化
     invalidate_qr()
+
+    # 過去に発行したQRコードも無効化
+    state["qr_records"].clear()
+
+    # プレイヤー一覧を削除
+    state["players"].clear()
+
+    # 生徒のプレイセッションを削除
+    state["sessions"].clear()
 
 
 # ==========================================
@@ -1030,7 +1039,7 @@ def revoke_player(player_id):
 
 
 # ==========================================
-# 個別停止解除（新機能）
+# 個別停止解除
 # ==========================================
 
 @app.route("/api/admin/unrevoke/<player_id>", methods=["POST"])
@@ -1060,10 +1069,7 @@ def unrevoke_player(player_id):
             }), 403
 
         player["revoked"] = False
-
         player["status"] = "playing"
-
-        # プレイ時間は認証開始からの経過時間で継続
         player["stopped_at"] = None
 
     return jsonify({"ok": True})
@@ -1184,7 +1190,6 @@ def claim():
         }), 429
 
     data = request.get_json(silent=True) or {}
-
     key = data.get("key", "")
     player_id = data.get("player", "")
 
