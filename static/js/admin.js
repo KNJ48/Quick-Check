@@ -2,7 +2,7 @@
 
 // ========================================
 // 科学技術部 ゲーム管理システム
-// 管理者画面 完全版
+// 管理者画面
 // ========================================
 
 
@@ -27,7 +27,7 @@ const $ = id => document.getElementById(id);
 
 
 // ========================================
-// 状態管理
+// 状態
 // ========================================
 
 let polling = false;
@@ -42,30 +42,25 @@ let qrExpireAt = 0;
 
 let qrLibraryErrorShown = false;
 
-
-// 終了時刻の設定をサーバーから復元したか
 let settingsLoaded = false;
 
-
-// 管理者が時刻を編集中か
 let endTimeEdited = false;
 
 
 // ========================================
-// 終了時刻の編集検知
+// 終了時刻編集
 // ========================================
 
 $("endTime").addEventListener(
     "input",
     () => {
-
         endTimeEdited = true;
     }
 );
 
 
 // ========================================
-// API通信
+// API
 // ========================================
 
 async function apiPost(url, data = {}) {
@@ -73,15 +68,13 @@ async function apiPost(url, data = {}) {
     if (!csrf) {
 
         throw new Error(
-            "CSRFトークンがありません。再ログインしてください。"
+            "CSRFトークンを取得できませんでした。"
         );
     }
-
 
     const response = await fetch(
         url,
         {
-
             method: "POST",
 
             credentials: "same-origin",
@@ -94,10 +87,8 @@ async function apiPost(url, data = {}) {
             },
 
             body: JSON.stringify(data)
-
         }
     );
-
 
     let result;
 
@@ -111,7 +102,6 @@ async function apiPost(url, data = {}) {
             "サーバーから正常な応答がありませんでした。"
         );
     }
-
 
     if (!response.ok) {
 
@@ -127,10 +117,7 @@ async function apiPost(url, data = {}) {
             );
         }
 
-
-        if (
-            result.error === "csrf_failed"
-        ) {
+        if (result.error === "csrf_failed") {
 
             sessionInvalid = true;
 
@@ -139,19 +126,17 @@ async function apiPost(url, data = {}) {
             );
         }
 
-
         throw new Error(
             result.error || "通信エラー"
         );
     }
-
 
     return result;
 }
 
 
 // ========================================
-// 時間フォーマット
+// 時間表示
 // ========================================
 
 function formatTime(seconds) {
@@ -174,7 +159,7 @@ function formatTime(seconds) {
 
 
 // ========================================
-// 日本時間変換
+// 日本時間
 // ========================================
 
 function formatJST(timestamp) {
@@ -209,29 +194,21 @@ function restoreSettings(data) {
         data.deadline
     );
 
-
-    // 終了時刻表示
     $("deadlineText").textContent =
         deadline || "未設定";
 
-
-    // 管理者が編集中なら上書きしない
     if (endTimeEdited) {
         return;
     }
 
-
-    // サーバーに設定がある場合
     if (deadline) {
 
         $("endTime").value = deadline;
 
     } else if (!settingsLoaded) {
 
-        // 初期設定が存在しない場合のみ
         $("endTime").value = "13:10";
     }
-
 
     settingsLoaded = true;
 }
@@ -245,17 +222,13 @@ function clearQr(message) {
 
     $("qrcode").replaceChildren();
 
-    $("qrPlaceholder").style.display =
-        "block";
+    $("qrPlaceholder").style.display = "block";
 
-    $("qrPlaceholder").textContent =
-        message;
+    $("qrPlaceholder").textContent = message;
 
-    $("qrPlayer").textContent =
-        "PLAYER ---";
+    $("qrPlayer").textContent = "PLAYER ---";
 
-    $("qrRemaining").textContent =
-        "--:--";
+    $("qrRemaining").textContent = "--:--";
 
     currentGeneration = null;
 
@@ -269,16 +242,11 @@ function clearQr(message) {
 
 function showQr(qr) {
 
-    if (
-        currentGeneration === qr.generation
-    ) {
+    if (currentGeneration === qr.generation) {
         return;
     }
 
-
-    if (
-        typeof QRCode === "undefined"
-    ) {
+    if (typeof QRCode === "undefined") {
 
         if (!qrLibraryErrorShown) {
 
@@ -289,7 +257,6 @@ function showQr(qr) {
             );
         }
 
-
         clearQr(
             "QRコードライブラリの読み込みに失敗しました"
         );
@@ -297,24 +264,18 @@ function showQr(qr) {
         return;
     }
 
-
     currentGeneration = qr.generation;
-
 
     $("qrcode").replaceChildren();
 
-    $("qrPlaceholder").style.display =
-        "none";
-
+    $("qrPlaceholder").style.display = "none";
 
     $("qrPlayer").textContent =
         "PLAYER " + qr.player_id;
 
-
     new QRCode(
         $("qrcode"),
         {
-
             text: qr.url,
 
             width: 280,
@@ -326,30 +287,20 @@ function showQr(qr) {
             colorLight: "#ffffff",
 
             correctLevel: QRCode.CorrectLevel.M
-
         }
     );
-
 
     qrExpireAt =
         Date.now() +
         qr.remaining_seconds * 1000;
 
+    const box = document.querySelector(".qr-box");
 
-    // アニメーション
-    const box = document.querySelector(
-        ".qr-box"
-    );
-
-    box.classList.remove(
-        "qr-change"
-    );
+    box.classList.remove("qr-change");
 
     void box.offsetWidth;
 
-    box.classList.add(
-        "qr-change"
-    );
+    box.classList.add("qr-change");
 }
 
 
@@ -363,14 +314,12 @@ function updateQrTimer() {
         return;
     }
 
-
     const remaining = Math.max(
         0,
         Math.ceil(
             (qrExpireAt - Date.now()) / 1000
         )
     );
-
 
     $("qrRemaining").textContent =
         formatTime(remaining);
@@ -384,15 +333,10 @@ function updateQrTimer() {
 function statusLabel(status) {
 
     const labels = {
-
         playing: "🟢 プレイ中",
-
         disconnected: "🔴 通信切断",
-
         revoked: "⛔ 停止済み",
-
         expired: "⌛ 時間切れ"
-
     };
 
     return labels[status] || status;
@@ -409,60 +353,41 @@ function renderPlayers(players) {
 
     container.replaceChildren();
 
-
     if (!players.length) {
 
-        const p = document.createElement(
-            "p"
-        );
+        const p = document.createElement("p");
 
         p.className = "empty-message";
 
-        p.textContent =
-            "プレイヤーはいません";
+        p.textContent = "プレイヤーはいません";
 
         container.appendChild(p);
 
         return;
     }
 
-
     players
         .slice()
         .sort(
             (a, b) =>
-                a.player_id.localeCompare(
-                    b.player_id
-                )
+                a.player_id.localeCompare(b.player_id)
         )
         .forEach(player => {
 
-
-            const row = document.createElement(
-                "div"
-            );
+            const row = document.createElement("div");
 
             row.className = "player-row";
 
-
-            const info = document.createElement(
-                "div"
-            );
+            const info = document.createElement("div");
 
             info.className = "player-info";
 
-
-            const name = document.createElement(
-                "strong"
-            );
+            const name = document.createElement("strong");
 
             name.textContent =
                 "PLAYER " + player.player_id;
 
-
-            const status = document.createElement(
-                "span"
-            );
+            const status = document.createElement("span");
 
             status.textContent =
                 statusLabel(player.status) +
@@ -470,36 +395,26 @@ function renderPlayers(players) {
                 player.last_seen_seconds +
                 "秒前）";
 
-
             info.appendChild(name);
 
             info.appendChild(status);
 
             row.appendChild(info);
 
-
-            // 停止済みでなければ停止ボタン
             if (
                 player.status !== "revoked" &&
                 player.status !== "expired"
             ) {
 
+                const button = document.createElement("button");
 
-                const button = document.createElement(
-                    "button"
-                );
+                button.className = "danger-button";
 
-                button.className =
-                    "danger-button";
-
-                button.textContent =
-                    "プレイ停止";
-
+                button.textContent = "プレイ停止";
 
                 button.addEventListener(
                     "click",
                     async () => {
-
 
                         if (!confirm(
                             "PLAYER " +
@@ -508,7 +423,6 @@ function renderPlayers(players) {
                         )) {
                             return;
                         }
-
 
                         try {
 
@@ -525,14 +439,11 @@ function renderPlayers(players) {
 
                             alert(error.message);
                         }
-
                     }
                 );
 
-
                 row.appendChild(button);
             }
-
 
             container.appendChild(row);
         });
@@ -545,15 +456,11 @@ function renderPlayers(players) {
 
 async function poll() {
 
-    if (
-        polling ||
-        sessionInvalid
-    ) {
+    if (polling || sessionInvalid) {
         return;
     }
 
     polling = true;
-
 
     try {
 
@@ -561,108 +468,72 @@ async function poll() {
             "/api/admin/heartbeat"
         );
 
-
-        // =================================
-        // サーバー接続
-        // =================================
-
+        // サーバー接続状態
         $("connectionStatus").textContent =
             "🟢 サーバー接続中";
 
         $("connectionStatus").className =
             "connected";
 
-
-        // =================================
         // 受付状態
-        // =================================
-
         $("statusText").textContent =
             data.reception
                 ? "受付中"
                 : "停止中";
 
-
-        // =================================
-        // 受付PC接続
-        // =================================
-
+        // 受付専用画面の状態
         $("receptionConnection").textContent =
             data.reception_connected
                 ? "🟢 接続中"
-                : "🔴 未接続";
+                : "⚪ 未使用";
 
-
-        // =================================
         // プレイヤー数
-        // =================================
-
         $("playingCount").textContent =
             data.playing_count;
 
-
-        // =================================
         // 設定復元
-        // =================================
-
         restoreSettings(data);
 
-
-        // =================================
         // プレイヤー一覧
-        // =================================
+        renderPlayers(data.players);
 
-        renderPlayers(
-            data.players
-        );
-
-
-        // =================================
-        // QRコード
-        // =================================
-
+        // QRコード表示
         if (
             data.reception &&
-            data.reception_connected &&
+            data.any_staff_connected &&
             data.qr
         ) {
 
             $("receptionStatus").textContent =
                 "🟢 受付中";
 
-            showQr(
-                data.qr
-            );
+            showQr(data.qr);
 
         } else {
 
             $("receptionStatus").textContent =
                 data.reception
-                    ? "🔴 受付PC未接続"
+                    ? "接続待機中"
                     : "受付停止中";
-
 
             clearQr(
                 data.reception
-                    ? "受付PCとの接続を確認しています"
+                    ? "接続を確認しています..."
                     : "受付を開始してください"
             );
         }
 
-
     } catch (error) {
 
         console.error(
-            "管理画面更新エラー:",
+            "管理画面通信エラー:",
             error
         );
-
 
         if (sessionInvalid) {
 
             $("connectionStatus").textContent =
                 "🔴 管理者認証エラー";
-
 
             if (!sessionAlertShown) {
 
@@ -680,19 +551,15 @@ async function poll() {
                 "🔴 サーバー通信エラー";
         }
 
-
         $("connectionStatus").className =
             "disconnected";
-
 
         $("receptionStatus").textContent =
             "接続確認中";
 
-
         clearQr(
             "サーバーとの接続を確認しています"
         );
-
 
     } finally {
 
@@ -709,20 +576,14 @@ $("startButton").addEventListener(
     "click",
     async () => {
 
-
-        const endTime =
-            $("endTime").value;
-
+        const endTime = $("endTime").value;
 
         if (!endTime) {
 
-            alert(
-                "終了時刻を設定してください"
-            );
+            alert("終了時刻を設定してください");
 
             return;
         }
-
 
         try {
 
@@ -733,18 +594,14 @@ $("startButton").addEventListener(
                 }
             );
 
-
-            // サーバー設定を再取得
             endTimeEdited = false;
 
             await poll();
-
 
         } catch (error) {
 
             alert(error.message);
         }
-
     }
 );
 
@@ -757,19 +614,13 @@ $("stopButton").addEventListener(
     "click",
     async () => {
 
-
-        if (!confirm(
-            "受付を終了しますか？"
-        )) {
+        if (!confirm("受付を終了しますか？")) {
             return;
         }
 
-
         try {
 
-            await apiPost(
-                "/api/admin/stop"
-            );
+            await apiPost("/api/admin/stop");
 
             await poll();
 
@@ -777,7 +628,6 @@ $("stopButton").addEventListener(
 
             alert(error.message);
         }
-
     }
 );
 
@@ -790,7 +640,6 @@ $("revokeAllButton").addEventListener(
     "click",
     async () => {
 
-
         if (!confirm(
             "すべての一般生徒のプレイを停止します。\n" +
             "本当に実行しますか？"
@@ -798,12 +647,9 @@ $("revokeAllButton").addEventListener(
             return;
         }
 
-
         try {
 
-            await apiPost(
-                "/api/admin/revoke-all"
-            );
+            await apiPost("/api/admin/revoke-all");
 
             await poll();
 
@@ -811,7 +657,6 @@ $("revokeAllButton").addEventListener(
 
             alert(error.message);
         }
-
     }
 );
 
@@ -824,22 +669,16 @@ $("logoutButton").addEventListener(
     "click",
     async () => {
 
-
         try {
 
-            await apiPost(
-                "/admin/logout"
-            );
+            await apiPost("/admin/logout");
 
-            location.replace(
-                "/admin"
-            );
+            location.replace("/admin");
 
         } catch (error) {
 
             alert(error.message);
         }
-
     }
 );
 
@@ -848,19 +687,17 @@ $("logoutButton").addEventListener(
 // 定期更新
 // ========================================
 
-// QRコード残り時間
+// QRコード残り時間表示
 setInterval(
     updateQrTimer,
     250
 );
 
-
-// 管理画面の情報更新
+// 管理者PCハートビート兼QR更新
 setInterval(
     poll,
-    3000
+    1000
 );
 
-
-// ページ表示時に取得
+// 初回読み込み
 poll();
