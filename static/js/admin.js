@@ -1,56 +1,407 @@
 "use strict";
 
-const csrf = document
-    .querySelector('meta[name="csrf-token"]')
-    .getAttribute("content");
+// ========================================
+// 科学技術部 ゲーム管理システム
+// 管理者画面 完全版
+// ========================================
+
+
+// ========================================
+// CSRF
+// ========================================
+
+const csrfMeta = document.querySelector(
+    'meta[name="csrf-token"]'
+);
+
+const csrf = csrfMeta
+    ? csrfMeta.getAttribute("content")
+    : null;
+
+
+// ========================================
+// DOM
+// ========================================
 
 const $ = id => document.getElementById(id);
 
+
+// ========================================
+// 状態管理
+// ========================================
+
 let polling = false;
 
+let sessionInvalid = false;
+
+let sessionAlertShown = false;
+
+let currentGeneration = null;
+
+let qrExpireAt = 0;
+
+let qrLibraryErrorShown = false;
+
+
+// 終了時刻の設定をサーバーから復元したか
+let settingsLoaded = false;
+
+
+// 管理者が時刻を編集中か
+let endTimeEdited = false;
+
+
+// ========================================
+// 終了時刻の編集検知
+// ========================================
+
+$("endTime").addEventListener(
+    "input",
+    () => {
+
+        endTimeEdited = true;
+    }
+);
+
+
+// ========================================
+// API通信
+// ========================================
 
 async function apiPost(url, data = {}) {
 
-    const response = await fetch(url, {
+    if (!csrf) {
 
-        method: "POST",
+        throw new Error(
+            "CSRFトークンがありません。再ログインしてください。"
+        );
+    }
 
-        credentials: "same-origin",
 
-        cache: "no-store",
+    const response = await fetch(
+        url,
+        {
 
-        headers: {
-            "Content-Type": "application/json",
-            "X-CSRF-Token": csrf
-        },
+            method: "POST",
 
-        body: JSON.stringify(data)
-    });
+            credentials: "same-origin",
 
-    const result = await response.json();
+            cache: "no-store",
+
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-Token": csrf
+            },
+
+            body: JSON.stringify(data)
+
+        }
+    );
+
+
+    let result;
+
+    try {
+
+        result = await response.json();
+
+    } catch (error) {
+
+        throw new Error(
+            "サーバーから正常な応答がありませんでした。"
+        );
+    }
+
 
     if (!response.ok) {
+
+        if (
+            response.status === 401 ||
+            result.error === "authentication_required"
+        ) {
+
+            sessionInvalid = true;
+
+            throw new Error(
+                "管理者セッションが無効です。"
+            );
+        }
+
+
+        if (
+            result.error === "csrf_failed"
+        ) {
+
+            sessionInvalid = true;
+
+            throw new Error(
+                "CSRF認証に失敗しました。"
+            );
+        }
+
+
         throw new Error(
             result.error || "通信エラー"
         );
     }
 
+
     return result;
 }
 
 
+// ========================================
+// 時間フォーマット
+// ========================================
+
+function formatTime(seconds) {
+
+    seconds = Math.max(
+        0,
+        Math.floor(seconds)
+    );
+
+    const minutes = Math.floor(seconds / 60);
+
+    const secs = seconds % 60;
+
+    return (
+        String(minutes).padStart(2, "0") +
+        ":" +
+        String(secs).padStart(2, "0")
+    );
+}
+
+
+// ========================================
+// 日本時間変換
+// ========================================
+
+function formatJST(timestamp) {
+
+    if (!timestamp) {
+        return null;
+    }
+
+    const date = new Date(
+        timestamp * 1000
+    );
+
+    return date.toLocaleTimeString(
+        "ja-JP",
+        {
+            timeZone: "Asia/Tokyo",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false
+        }
+    );
+}
+
+
+// ========================================
+// 設定復元
+// ========================================
+
+function restoreSettings(data) {
+
+    const deadline = formatJST(
+        data.deadline
+    );
+
+
+    // 終了時刻表示
+    $("deadlineText").textContent =
+        deadline || "未設定";
+
+
+    // 管理者が編集中なら上書きしない
+    if (endTimeEdited) {
+        return;
+    }
+
+
+    // サーバーに設定がある場合
+    if (deadline) {
+
+        $("endTime").value = deadline;
+
+    } else if (!settingsLoaded) {
+
+        // 初期設定が存在しない場合のみ
+        $("endTime").value = "13:10";
+    }
+
+
+    settingsLoaded = true;
+}
+
+
+// ========================================
+// QRコード削除
+// ========================================
+
+function clearQr(message) {
+
+    $("qrcode").replaceChildren();
+
+    $("qrPlaceholder").style.display =
+        "block";
+
+    $("qrPlaceholder").textContent =
+        message;
+
+    $("qrPlayer").textContent =
+        "PLAYER ---";
+
+    $("qrRemaining").textContent =
+        "--:--";
+
+    currentGeneration = null;
+
+    qrExpireAt = 0;
+}
+
+
+// ========================================
+// QRコード表示
+// ========================================
+
+function showQr(qr) {
+
+    if (
+        currentGeneration === qr.generation
+    ) {
+        return;
+    }
+
+
+    if (
+        typeof QRCode === "undefined"
+    ) {
+
+        if (!qrLibraryErrorShown) {
+
+            qrLibraryErrorShown = true;
+
+            console.error(
+                "QRコードライブラリが読み込まれていません"
+            );
+        }
+
+
+        clearQr(
+            "QRコードライブラリの読み込みに失敗しました"
+        );
+
+        return;
+    }
+
+
+    currentGeneration = qr.generation;
+
+
+    $("qrcode").replaceChildren();
+
+    $("qrPlaceholder").style.display =
+        "none";
+
+
+    $("qrPlayer").textContent =
+        "PLAYER " + qr.player_id;
+
+
+    new QRCode(
+        $("qrcode"),
+        {
+
+            text: qr.url,
+
+            width: 280,
+
+            height: 280,
+
+            colorDark: "#08111f",
+
+            colorLight: "#ffffff",
+
+            correctLevel: QRCode.CorrectLevel.M
+
+        }
+    );
+
+
+    qrExpireAt =
+        Date.now() +
+        qr.remaining_seconds * 1000;
+
+
+    // アニメーション
+    const box = document.querySelector(
+        ".qr-box"
+    );
+
+    box.classList.remove(
+        "qr-change"
+    );
+
+    void box.offsetWidth;
+
+    box.classList.add(
+        "qr-change"
+    );
+}
+
+
+// ========================================
+// QRコード残り時間
+// ========================================
+
+function updateQrTimer() {
+
+    if (!qrExpireAt) {
+        return;
+    }
+
+
+    const remaining = Math.max(
+        0,
+        Math.ceil(
+            (qrExpireAt - Date.now()) / 1000
+        )
+    );
+
+
+    $("qrRemaining").textContent =
+        formatTime(remaining);
+}
+
+
+// ========================================
+// プレイヤー状態
+// ========================================
+
 function statusLabel(status) {
 
     const labels = {
+
         playing: "🟢 プレイ中",
+
         disconnected: "🔴 通信切断",
+
         revoked: "⛔ 停止済み",
+
         expired: "⌛ 時間切れ"
+
     };
 
     return labels[status] || status;
 }
 
+
+// ========================================
+// プレイヤー一覧
+// ========================================
 
 function renderPlayers(players) {
 
@@ -58,91 +409,151 @@ function renderPlayers(players) {
 
     container.replaceChildren();
 
+
     if (!players.length) {
 
-        const p = document.createElement("p");
+        const p = document.createElement(
+            "p"
+        );
 
         p.className = "empty-message";
 
-        p.textContent = "プレイヤーはいません";
+        p.textContent =
+            "プレイヤーはいません";
 
         container.appendChild(p);
 
         return;
     }
 
-    players.forEach(player => {
 
-        const row = document.createElement("div");
+    players
+        .slice()
+        .sort(
+            (a, b) =>
+                a.player_id.localeCompare(
+                    b.player_id
+                )
+        )
+        .forEach(player => {
 
-        row.className = "player-row";
 
-        const info = document.createElement("div");
+            const row = document.createElement(
+                "div"
+            );
 
-        info.className = "player-info";
+            row.className = "player-row";
 
-        const name = document.createElement("strong");
 
-        name.textContent = "PLAYER " + player.player_id;
+            const info = document.createElement(
+                "div"
+            );
 
-        const status = document.createElement("span");
+            info.className = "player-info";
 
-        status.textContent =
-            statusLabel(player.status) +
-            "（" + player.last_seen_seconds + "秒前）";
 
-        info.appendChild(name);
-        info.appendChild(status);
+            const name = document.createElement(
+                "strong"
+            );
 
-        row.appendChild(info);
+            name.textContent =
+                "PLAYER " + player.player_id;
 
-        if (
-            player.status !== "revoked" &&
-            player.status !== "expired"
-        ) {
 
-            const button = document.createElement("button");
+            const status = document.createElement(
+                "span"
+            );
 
-            button.className = "danger-button";
+            status.textContent =
+                statusLabel(player.status) +
+                "（" +
+                player.last_seen_seconds +
+                "秒前）";
 
-            button.textContent = "プレイ停止";
 
-            button.onclick = async () => {
+            info.appendChild(name);
 
-                if (!confirm(
-                    player.player_id + "を停止しますか？"
-                )) {
-                    return;
-                }
+            info.appendChild(status);
 
-                try {
+            row.appendChild(info);
 
-                    await apiPost(
-                        "/api/admin/revoke/" +
-                        encodeURIComponent(player.player_id)
-                    );
 
-                    await poll();
+            // 停止済みでなければ停止ボタン
+            if (
+                player.status !== "revoked" &&
+                player.status !== "expired"
+            ) {
 
-                } catch (error) {
 
-                    alert(error.message);
-                }
-            };
+                const button = document.createElement(
+                    "button"
+                );
 
-            row.appendChild(button);
-        }
+                button.className =
+                    "danger-button";
 
-        container.appendChild(row);
-    });
+                button.textContent =
+                    "プレイ停止";
+
+
+                button.addEventListener(
+                    "click",
+                    async () => {
+
+
+                        if (!confirm(
+                            "PLAYER " +
+                            player.player_id +
+                            " を停止しますか？"
+                        )) {
+                            return;
+                        }
+
+
+                        try {
+
+                            await apiPost(
+                                "/api/admin/revoke/" +
+                                encodeURIComponent(
+                                    player.player_id
+                                )
+                            );
+
+                            await poll();
+
+                        } catch (error) {
+
+                            alert(error.message);
+                        }
+
+                    }
+                );
+
+
+                row.appendChild(button);
+            }
+
+
+            container.appendChild(row);
+        });
 }
 
 
+// ========================================
+// 管理画面更新
+// ========================================
+
 async function poll() {
 
-    if (polling) return;
+    if (
+        polling ||
+        sessionInvalid
+    ) {
+        return;
+    }
 
     polling = true;
+
 
     try {
 
@@ -150,47 +561,138 @@ async function poll() {
             "/api/admin/heartbeat"
         );
 
+
+        // =================================
+        // サーバー接続
+        // =================================
+
         $("connectionStatus").textContent =
             "🟢 サーバー接続中";
 
+        $("connectionStatus").className =
+            "connected";
+
+
+        // =================================
+        // 受付状態
+        // =================================
+
         $("statusText").textContent =
-            data.reception ? "受付中" : "停止中";
+            data.reception
+                ? "受付中"
+                : "停止中";
+
+
+        // =================================
+        // 受付PC接続
+        // =================================
 
         $("receptionConnection").textContent =
             data.reception_connected
                 ? "🟢 接続中"
                 : "🔴 未接続";
 
+
+        // =================================
+        // プレイヤー数
+        // =================================
+
         $("playingCount").textContent =
             data.playing_count;
 
-        if (data.deadline) {
 
-            $("deadlineText").textContent =
-                new Date(
-                    data.deadline * 1000
-                ).toLocaleTimeString(
-                    "ja-JP",
-                    {
-                        timeZone: "Asia/Tokyo",
-                        hour: "2-digit",
-                        minute: "2-digit"
-                    }
-                );
+        // =================================
+        // 設定復元
+        // =================================
+
+        restoreSettings(data);
+
+
+        // =================================
+        // プレイヤー一覧
+        // =================================
+
+        renderPlayers(
+            data.players
+        );
+
+
+        // =================================
+        // QRコード
+        // =================================
+
+        if (
+            data.reception &&
+            data.reception_connected &&
+            data.qr
+        ) {
+
+            $("receptionStatus").textContent =
+                "🟢 受付中";
+
+            showQr(
+                data.qr
+            );
 
         } else {
 
-            $("deadlineText").textContent = "未設定";
+            $("receptionStatus").textContent =
+                data.reception
+                    ? "🔴 受付PC未接続"
+                    : "受付停止中";
+
+
+            clearQr(
+                data.reception
+                    ? "受付PCとの接続を確認しています"
+                    : "受付を開始してください"
+            );
         }
 
-        renderPlayers(data.players);
 
     } catch (error) {
 
-        $("connectionStatus").textContent =
-            "🔴 通信エラー";
+        console.error(
+            "管理画面更新エラー:",
+            error
+        );
 
-        console.error(error);
+
+        if (sessionInvalid) {
+
+            $("connectionStatus").textContent =
+                "🔴 管理者認証エラー";
+
+
+            if (!sessionAlertShown) {
+
+                sessionAlertShown = true;
+
+                alert(
+                    "管理者セッションが無効になりました。\n" +
+                    "再ログインしてください。"
+                );
+            }
+
+        } else {
+
+            $("connectionStatus").textContent =
+                "🔴 サーバー通信エラー";
+        }
+
+
+        $("connectionStatus").className =
+            "disconnected";
+
+
+        $("receptionStatus").textContent =
+            "接続確認中";
+
+
+        clearQr(
+            "サーバーとの接続を確認しています"
+        );
+
 
     } finally {
 
@@ -199,90 +701,166 @@ async function poll() {
 }
 
 
-$("startButton").addEventListener("click", async () => {
+// ========================================
+// 受付開始
+// ========================================
 
-    const endTime = $("endTime").value;
+$("startButton").addEventListener(
+    "click",
+    async () => {
 
-    if (!endTime) {
 
-        alert("終了時刻を設定してください");
+        const endTime =
+            $("endTime").value;
 
-        return;
+
+        if (!endTime) {
+
+            alert(
+                "終了時刻を設定してください"
+            );
+
+            return;
+        }
+
+
+        try {
+
+            await apiPost(
+                "/api/admin/start",
+                {
+                    end_time: endTime
+                }
+            );
+
+
+            // サーバー設定を再取得
+            endTimeEdited = false;
+
+            await poll();
+
+
+        } catch (error) {
+
+            alert(error.message);
+        }
+
     }
+);
 
-    try {
 
-        await apiPost(
-            "/api/admin/start",
-            {
-                end_time: endTime
-            }
-        );
+// ========================================
+// 受付終了
+// ========================================
 
-        await poll();
+$("stopButton").addEventListener(
+    "click",
+    async () => {
 
-    } catch (error) {
 
-        alert(error.message);
+        if (!confirm(
+            "受付を終了しますか？"
+        )) {
+            return;
+        }
+
+
+        try {
+
+            await apiPost(
+                "/api/admin/stop"
+            );
+
+            await poll();
+
+        } catch (error) {
+
+            alert(error.message);
+        }
+
     }
-});
+);
 
 
-$("stopButton").addEventListener("click", async () => {
+// ========================================
+// 全員停止
+// ========================================
 
-    if (!confirm("受付を終了しますか？")) {
-        return;
+$("revokeAllButton").addEventListener(
+    "click",
+    async () => {
+
+
+        if (!confirm(
+            "すべての一般生徒のプレイを停止します。\n" +
+            "本当に実行しますか？"
+        )) {
+            return;
+        }
+
+
+        try {
+
+            await apiPost(
+                "/api/admin/revoke-all"
+            );
+
+            await poll();
+
+        } catch (error) {
+
+            alert(error.message);
+        }
+
     }
+);
 
-    try {
 
-        await apiPost("/api/admin/stop");
+// ========================================
+// ログアウト
+// ========================================
 
-        await poll();
+$("logoutButton").addEventListener(
+    "click",
+    async () => {
 
-    } catch (error) {
 
-        alert(error.message);
+        try {
+
+            await apiPost(
+                "/admin/logout"
+            );
+
+            location.replace(
+                "/admin"
+            );
+
+        } catch (error) {
+
+            alert(error.message);
+        }
+
     }
-});
+);
 
 
-$("revokeAllButton").addEventListener("click", async () => {
+// ========================================
+// 定期更新
+// ========================================
 
-    if (!confirm(
-        "すべての一般生徒を停止しますか？"
-    )) {
-        return;
-    }
-
-    try {
-
-        await apiPost("/api/admin/revoke-all");
-
-        await poll();
-
-    } catch (error) {
-
-        alert(error.message);
-    }
-});
+// QRコード残り時間
+setInterval(
+    updateQrTimer,
+    250
+);
 
 
-$("logoutButton").addEventListener("click", async () => {
-
-    try {
-
-        await apiPost("/admin/logout");
-
-        location.replace("/admin");
-
-    } catch (error) {
-
-        alert(error.message);
-    }
-});
+// 管理画面の情報更新
+setInterval(
+    poll,
+    3000
+);
 
 
-setInterval(poll, 3000);
-
+// ページ表示時に取得
 poll();
