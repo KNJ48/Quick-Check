@@ -46,6 +46,13 @@ let settingsLoaded = false;
 
 let endTimeEdited = false;
 
+// ゲームURL設定
+let gameUrlEdited = false;
+
+let gameUrlSaving = false;
+
+let gameUrlLastLoaded = null;
+
 
 // ========================================
 // 終了時刻編集
@@ -55,6 +62,18 @@ $("endTime").addEventListener(
     "input",
     () => {
         endTimeEdited = true;
+    }
+);
+
+
+// ========================================
+// ゲームURL編集状態
+// ========================================
+
+$("gameUrlInput").addEventListener(
+    "input",
+    () => {
+        gameUrlEdited = true;
     }
 );
 
@@ -174,6 +193,7 @@ function formatPlayTime(seconds) {
     const remainingSeconds = seconds % 60;
 
     if (minutes === 0) {
+
         return remainingSeconds + "秒";
     }
 
@@ -240,6 +260,163 @@ function restoreSettings(data) {
 
     settingsLoaded = true;
 }
+
+
+// ========================================
+// ゲームURL設定復元
+// ========================================
+
+function restoreGameUrl(data) {
+
+    if (typeof data.game_url !== "string") {
+        return;
+    }
+
+    const currentUrl = data.game_url;
+
+    // 現在のURLは常に最新の情報を表示
+    $("currentGameUrl").textContent =
+        currentUrl;
+
+    gameUrlLastLoaded = currentUrl;
+
+    // 編集中の入力内容は上書きしない
+    if (gameUrlEdited || gameUrlSaving) {
+        return;
+    }
+
+    $("gameUrlInput").value =
+        currentUrl;
+}
+
+
+// ========================================
+// ゲームURL変更メッセージ
+// ========================================
+
+function showGameUrlMessage(message, success) {
+
+    const element = $("gameUrlMessage");
+
+    element.textContent = message;
+
+    element.style.color =
+        success ? "#16a34a" : "#dc2626";
+}
+
+
+// ========================================
+// ゲームURL保存
+// ========================================
+
+$("saveGameUrlButton").addEventListener(
+    "click",
+    async () => {
+
+        if (gameUrlSaving) {
+            return;
+        }
+
+        const newUrl =
+            $("gameUrlInput").value.trim();
+
+        if (!newUrl) {
+
+            showGameUrlMessage(
+                "URLを入力してください。",
+                false
+            );
+
+            return;
+        }
+
+        let parsedUrl;
+
+        try {
+
+            parsedUrl = new URL(newUrl);
+
+        } catch (error) {
+
+            showGameUrlMessage(
+                "URLの形式が正しくありません。",
+                false
+            );
+
+            return;
+        }
+
+        if (
+            parsedUrl.protocol !== "https:" ||
+            !parsedUrl.hostname
+        ) {
+
+            showGameUrlMessage(
+                "HTTPSのURLを入力してください。",
+                false
+            );
+
+            return;
+        }
+
+        if (
+            !confirm(
+                "ゲームサイトのURLを変更しますか？\n\n" +
+                newUrl
+            )
+        ) {
+            return;
+        }
+
+        gameUrlSaving = true;
+
+        const button = $("saveGameUrlButton");
+
+        button.disabled = true;
+
+        button.textContent = "保存中...";
+
+        try {
+
+            const result = await apiPost(
+                "/api/admin/game-url",
+                {
+                    game_url: newUrl
+                }
+            );
+
+            gameUrlEdited = false;
+
+            gameUrlLastLoaded = result.game_url;
+
+            $("gameUrlInput").value =
+                result.game_url;
+
+            $("currentGameUrl").textContent =
+                result.game_url;
+
+            showGameUrlMessage(
+                "✅ ゲームURLを更新しました！",
+                true
+            );
+
+        } catch (error) {
+
+            showGameUrlMessage(
+                "❌ " + error.message,
+                false
+            );
+
+        } finally {
+
+            gameUrlSaving = false;
+
+            button.disabled = false;
+
+            button.textContent = "URLを変更する";
+        }
+    }
+);
 
 
 // ========================================
@@ -496,29 +673,39 @@ async function poll() {
             "/api/admin/heartbeat"
         );
 
+        // サーバー接続状態
         $("connectionStatus").textContent =
             "🟢 サーバー接続中";
 
         $("connectionStatus").className =
             "connected";
 
+        // 受付状態
         $("statusText").textContent =
             data.reception
                 ? "受付中"
                 : "停止中";
 
+        // 受付PC状態
         $("receptionConnection").textContent =
             data.reception_connected
                 ? "🟢 接続中"
                 : "⚪ 未使用";
 
+        // プレイヤー数
         $("playingCount").textContent =
             data.playing_count;
 
+        // 終了時刻設定復元
         restoreSettings(data);
 
+        // ゲームURL設定復元
+        restoreGameUrl(data);
+
+        // プレイヤー一覧
         renderPlayers(data.players);
 
+        // QRコード
         if (
             data.reception &&
             data.any_staff_connected &&
@@ -602,6 +789,7 @@ $("startButton").addEventListener(
         if (!endTime) {
 
             alert("終了時刻を設定してください");
+
             return;
         }
 
@@ -619,6 +807,7 @@ $("startButton").addEventListener(
             await poll();
 
         } catch (error) {
+
             alert(error.message);
         }
     }
@@ -644,6 +833,7 @@ $("stopButton").addEventListener(
             await poll();
 
         } catch (error) {
+
             alert(error.message);
         }
     }
@@ -672,6 +862,7 @@ $("revokeAllButton").addEventListener(
             await poll();
 
         } catch (error) {
+
             alert(error.message);
         }
     }
@@ -693,6 +884,7 @@ $("logoutButton").addEventListener(
             location.replace("/admin");
 
         } catch (error) {
+
             alert(error.message);
         }
     }
