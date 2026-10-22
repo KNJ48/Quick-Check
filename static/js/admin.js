@@ -136,7 +136,7 @@ async function apiPost(url, data = {}) {
 
 
 // ========================================
-// 時間表示
+// QRコード残り時間表示
 // ========================================
 
 function formatTime(seconds) {
@@ -159,10 +159,10 @@ function formatTime(seconds) {
 
 
 // ========================================
-// 最終通信からの経過時間表示
+// プレイ時間表示
 // ========================================
 
-function formatElapsedTime(seconds) {
+function formatPlayTime(seconds) {
 
     seconds = Math.max(
         0,
@@ -174,15 +174,14 @@ function formatElapsedTime(seconds) {
     const remainingSeconds = seconds % 60;
 
     if (minutes === 0) {
-
-        return remainingSeconds + "秒前";
+        return remainingSeconds + "秒";
     }
 
     return (
         minutes +
         "分" +
         remainingSeconds +
-        "秒前"
+        "秒"
     );
 }
 
@@ -420,8 +419,8 @@ function renderPlayers(players) {
 
             status.textContent =
                 statusLabel(player.status) +
-                "（" +
-                formatElapsedTime(player.last_seen_seconds) +
+                "（プレイ時間：" +
+                formatPlayTime(player.play_seconds) +
                 "）";
 
             info.appendChild(name);
@@ -497,36 +496,29 @@ async function poll() {
             "/api/admin/heartbeat"
         );
 
-        // サーバー接続状態
         $("connectionStatus").textContent =
             "🟢 サーバー接続中";
 
         $("connectionStatus").className =
             "connected";
 
-        // 受付状態
         $("statusText").textContent =
             data.reception
                 ? "受付中"
                 : "停止中";
 
-        // 受付専用画面の状態
         $("receptionConnection").textContent =
             data.reception_connected
                 ? "🟢 接続中"
                 : "⚪ 未使用";
 
-        // プレイヤー数
         $("playingCount").textContent =
             data.playing_count;
 
-        // 設定復元
         restoreSettings(data);
 
-        // プレイヤー一覧
         renderPlayers(data.players);
 
-        // QRコード表示
         if (
             data.reception &&
             data.any_staff_connected &&
@@ -610,7 +602,6 @@ $("startButton").addEventListener(
         if (!endTime) {
 
             alert("終了時刻を設定してください");
-
             return;
         }
 
@@ -628,7 +619,6 @@ $("startButton").addEventListener(
             await poll();
 
         } catch (error) {
-
             alert(error.message);
         }
     }
@@ -654,7 +644,6 @@ $("stopButton").addEventListener(
             await poll();
 
         } catch (error) {
-
             alert(error.message);
         }
     }
@@ -683,7 +672,6 @@ $("revokeAllButton").addEventListener(
             await poll();
 
         } catch (error) {
-
             alert(error.message);
         }
     }
@@ -705,7 +693,6 @@ $("logoutButton").addEventListener(
             location.replace("/admin");
 
         } catch (error) {
-
             alert(error.message);
         }
     }
