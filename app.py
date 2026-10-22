@@ -8,6 +8,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from functools import wraps
 from collections import defaultdict, deque
+from urllib.parse import urlsplit
 
 from flask import (
     Flask,
@@ -26,7 +27,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 # 基本設定
 # ==========================================
 
-GAME_URL = (
+DEFAULT_GAME_URL = (
     "https://ink3-1239.github.io/"
     "url-tool-39cf2075ec432800b501/"
     "a7f3c91e2b.html?v=memo7"
@@ -92,17 +93,31 @@ lock = threading.RLock()
 
 state = {
     "reception": False,
+
     "admin_last_seen": 0,
+
     "reception_last_seen": 0,
+
     "reception_owner": None,
+
     "deadline": None,
+
     "next_player": 1,
+
     "current_qr": None,
+
     "qr_records": {},
+
     "players": {},
+
     "sessions": {},
+
     "staff_sessions": {},
-    "generation": 0
+
+    "generation": 0,
+
+    # 現在のゲームサイトURL
+    "game_url": DEFAULT_GAME_URL
 }
 
 rate_limits = defaultdict(deque)
@@ -156,6 +171,66 @@ def clear_cookie(response, name):
 
 
 # ==========================================
+# ゲームURL検証
+# ==========================================
+
+def valid_game_url(value):
+
+    if not isinstance(value, str):
+        return False
+
+    if not value:
+        return False
+
+    if len(value) > 2048:
+        return False
+
+    # 空白・改行・制御文字は禁止
+    if any(
+        ord(char) <= 32 or ord(char) == 127
+        for char in value
+    ):
+        return False
+
+    try:
+
+        parsed = urlsplit(value)
+
+        if parsed.scheme != "https":
+            return False
+
+        if not parsed.hostname:
+            return False
+
+        # URL内のユーザー名・パスワードは禁止
+        if parsed.username is not None:
+            return False
+
+        if parsed.password is not None:
+            return False
+
+        # 不正なポート番号を検出
+        port = parsed.port
+
+        if port is not None and not (1 <= port <= 65535):
+            return False
+
+        # ホスト名の形式を確認
+        hostname = parsed.hostname
+
+        if any(
+            char.isspace()
+            for char in hostname
+        ):
+            return False
+
+    except (ValueError, TypeError):
+        return False
+
+    return True
+
+
+# ==========================================
 # セキュリティヘッダー
 # ==========================================
 
@@ -167,9 +242,13 @@ def security_headers(response):
     )
 
     response.headers["Pragma"] = "no-cache"
+
     response.headers["Expires"] = "0"
+
     response.headers["Referrer-Policy"] = "no-referrer"
+
     response.headers["X-Content-Type-Options"] = "nosniff"
+
     response.headers["X-Frame-Options"] = "DENY"
 
     response.headers["Permissions-Policy"] = (
@@ -182,7 +261,7 @@ def security_headers(response):
         "style-src 'self'; "
         "img-src 'self' data:; "
         "connect-src 'self'; "
-        "frame-src https://ink3-1239.github.io; "
+        "frame-src https:; "
         "object-src 'none'; "
         "base-uri 'none'; "
         "form-action 'self'; "
@@ -190,6 +269,7 @@ def security_headers(response):
     )
 
     if request.is_secure:
+
         response.headers["Strict-Transport-Security"] = (
             "max-age=31536000"
         )
@@ -204,7 +284,9 @@ def security_headers(response):
 def rate_limit(name, limit, window):
 
     ip = request.remote_addr or "unknown"
+
     key = (name, ip)
+
     current = now()
 
     with lock:
@@ -241,13 +323,16 @@ def staff_session():
             return None
 
         if session["expires"] <= now():
+
             state["staff_sessions"].pop(token, None)
+
             return None
 
         return session
 
 
 def staff_token():
+
     return request.cookies.get("staff_session")
 
 
@@ -261,11 +346,13 @@ def require_role(*roles):
             session = staff_session()
 
             if not session:
+
                 return jsonify({
                     "error": "authentication_required"
                 }), 401
 
             if session["role"] not in roles:
+
                 return jsonify({
                     "error": "permission_denied"
                 }), 403
@@ -305,6 +392,7 @@ def csrf_required(func):
     def wrapper(*args, **kwargs):
 
         if not csrf_valid():
+
             return jsonify({
                 "error": "csrf_failed"
             }), 403
@@ -433,9 +521,11 @@ def expire_players():
             )
 
             player["status"] = "expired"
+
             player["revoked"] = True
 
     state["reception"] = False
+
     invalidate_qr()
 
 
@@ -451,11 +541,13 @@ def generate_qr():
     invalidate_qr()
 
     player_number = state["next_player"]
+
     state["next_player"] += 1
 
     player_id = f"{player_number:03d}"
 
     key = random_token()
+
     issued = now()
 
     expires = min(
@@ -473,7 +565,9 @@ def generate_qr():
     }
 
     state["current_qr"] = qr
+
     state["qr_records"][key] = qr
+
     state["generation"] += 1
 
     return qr
@@ -493,9 +587,11 @@ def ensure_qr():
             or qr["invalidated"]
             or now() >= qr["expires"]
         ):
+
             qr = None
 
     if qr is None:
+
         qr = generate_qr()
 
     return qr
@@ -571,6 +667,7 @@ def player_allowed(player):
         )
 
         player["status"] = "expired"
+
         player["revoked"] = True
 
         return False, "time_expired"
@@ -589,15 +686,19 @@ def public_player(player):
     )
 
     if player["status"] == "expired":
+
         status = "expired"
 
     elif player["revoked"]:
+
         status = "revoked"
 
     elif elapsed >= 15:
+
         status = "disconnected"
 
     else:
+
         status = "playing"
 
     return {
@@ -624,18 +725,23 @@ def claim_qr_locked(qr):
         return None, "expired"
 
     if now() >= qr["expires"]:
+
         qr["invalidated"] = True
+
         return None, "expired"
 
     if not reception_available():
+
         return None, "reception_closed"
 
     if state["current_qr"] is not qr:
+
         return None, "expired"
 
     qr["used"] = True
 
     player_id = qr["player_id"]
+
     session_id = random_token()
 
     started_at = now()
@@ -668,6 +774,7 @@ def claim_qr_locked(qr):
 
 @app.route("/")
 def index():
+
     return redirect(url_for("admin"))
 
 
@@ -677,6 +784,7 @@ def index():
 
 @app.route("/admin")
 def admin():
+
     return render_template("admin_login.html")
 
 
@@ -684,6 +792,7 @@ def admin():
 def admin_login():
 
     if not rate_limit("staff_login", 10, 300):
+
         return render_template(
             "error.html",
             message="ログイン試行回数が多すぎます。"
@@ -692,18 +801,22 @@ def admin_login():
     password = request.form.get("password", "")
 
     if secure_equal(password, ADMIN_PASSWORD):
+
         role = "admin"
 
     elif secure_equal(password, RECEPTION_PASSWORD):
+
         role = "reception"
 
     else:
+
         return render_template(
             "admin_login.html",
             error="パスワードが違います"
         ), 401
 
     token = random_token()
+
     csrf = random_token()
 
     with lock:
@@ -746,7 +859,11 @@ def admin_logout():
     token = staff_token()
 
     with lock:
-        state["staff_sessions"].pop(token, None)
+
+        state["staff_sessions"].pop(
+            token,
+            None
+        )
 
     response = jsonify({"ok": True})
 
@@ -765,9 +882,11 @@ def admin_dashboard():
     session = staff_session()
 
     if not session:
+
         return redirect(url_for("admin"))
 
     if session["role"] != "admin":
+
         return redirect(url_for("reception_page"))
 
     return render_template(
@@ -786,15 +905,53 @@ def reception_page():
     session = staff_session()
 
     if not session:
+
         return redirect(url_for("admin"))
 
     if session["role"] != "reception":
+
         return redirect(url_for("admin_dashboard"))
 
     return render_template(
         "reception.html",
         csrf=session["csrf"]
     )
+
+
+# ==========================================
+# ゲームURL変更API
+# ==========================================
+
+@app.route("/api/admin/game-url", methods=["POST"])
+@require_role("admin")
+@csrf_required
+def update_game_url():
+
+    data = request.get_json(silent=True)
+
+    if not isinstance(data, dict):
+        return jsonify({
+            "error": "リクエスト形式が正しくありません"
+        }), 400
+
+    new_url = data.get("game_url")
+
+    if not valid_game_url(new_url):
+
+        return jsonify({
+            "error": (
+                "有効なHTTPSのURLを入力してください"
+            )
+        }), 400
+
+    with lock:
+
+        state["game_url"] = new_url
+
+    return jsonify({
+        "ok": True,
+        "game_url": new_url
+    })
 
 
 # ==========================================
@@ -807,6 +964,7 @@ def reception_page():
 def start_reception():
 
     data = request.get_json(silent=True) or {}
+
     end_time = data.get("end_time", "")
 
     try:
@@ -832,11 +990,13 @@ def start_reception():
         )
 
         if deadline <= current:
+
             return jsonify({
                 "error": "終了時刻は現在より後にしてください"
             }), 400
 
     except (ValueError, TypeError):
+
         return jsonify({
             "error": "時刻の形式が正しくありません"
         }), 400
@@ -844,7 +1004,9 @@ def start_reception():
     with lock:
 
         state["deadline"] = deadline.timestamp()
+
         state["reception"] = True
+
         state["admin_last_seen"] = now()
 
         invalidate_qr()
@@ -871,7 +1033,9 @@ def start_reception():
 def stop_reception():
 
     with lock:
+
         state["reception"] = False
+
         invalidate_qr()
 
     return jsonify({"ok": True})
@@ -896,12 +1060,14 @@ def reception_heartbeat():
             state["reception_owner"] is None
             or not reception_connected()
         ):
+
             state["reception_owner"] = token
 
         if not secure_equal(
             state["reception_owner"],
             token
         ):
+
             return jsonify({
                 "error": "another_reception_active"
             }), 409
@@ -949,15 +1115,27 @@ def admin_heartbeat():
 
         return jsonify({
             "connected": True,
+
             "admin_connected": admin_connected(),
+
             "reception": state["reception"],
+
             "reception_connected": reception_connected(),
+
             "any_staff_connected": any_staff_connected(),
+
             "deadline": state["deadline"],
+
             "server_time": now(),
+
             "playing_count": playing_count,
+
             "players": players,
-            "qr": qr_public(qr)
+
+            "qr": qr_public(qr),
+
+            # 現在のゲームURL
+            "game_url": state["game_url"]
         })
 
 
@@ -975,6 +1153,7 @@ def revoke_player(player_id):
         player = state["players"].get(player_id)
 
         if not player:
+
             return jsonify({
                 "error": "player_not_found"
             }), 404
@@ -982,6 +1161,7 @@ def revoke_player(player_id):
         stop_player_timer(player)
 
         player["revoked"] = True
+
         player["status"] = "revoked"
 
     return jsonify({"ok": True})
@@ -1003,6 +1183,7 @@ def revoke_all():
             stop_player_timer(player)
 
             player["revoked"] = True
+
             player["status"] = "revoked"
 
     return jsonify({"ok": True})
@@ -1016,6 +1197,7 @@ def revoke_all():
 def join():
 
     if not rate_limit("join", 60, 60):
+
         return render_template(
             "error.html",
             message="アクセスが集中しています。"
@@ -1026,18 +1208,21 @@ def join():
         expire_players()
 
         if not state["reception"]:
+
             return render_template(
                 "error.html",
                 message="現在、受付を停止しています。"
             ), 403
 
         if not any_staff_connected():
+
             return render_template(
                 "error.html",
                 message="受付システムとの接続を確認しています。"
             ), 503
 
         if deadline_passed():
+
             return render_template(
                 "expired.html",
                 reason="time_expired"
@@ -1046,6 +1231,7 @@ def join():
         qr = ensure_qr()
 
         if not qr:
+
             return render_template(
                 "error.html",
                 message="認証情報を準備しています。"
@@ -1054,6 +1240,7 @@ def join():
         session_id, error = claim_qr_locked(qr)
 
         if error:
+
             return render_template(
                 "error.html",
                 message="認証できませんでした。"
@@ -1081,9 +1268,11 @@ def join():
 def play():
 
     key = request.args.get("key", "")
+
     player_id = request.args.get("player", "")
 
     if not key or not player_id:
+
         return redirect(url_for("game"))
 
     return render_template(
@@ -1101,6 +1290,7 @@ def play():
 def claim():
 
     if not rate_limit("claim", 60, 60):
+
         return jsonify({
             "error": "rate_limited"
         }), 429
@@ -1108,6 +1298,7 @@ def claim():
     data = request.get_json(silent=True) or {}
 
     key = data.get("key", "")
+
     player_id = data.get("player", "")
 
     with lock:
@@ -1117,11 +1308,13 @@ def claim():
         qr = state["qr_records"].get(key)
 
         if not qr:
+
             return jsonify({
                 "error": "invalid"
             }), 403
 
         if qr["player_id"] != player_id:
+
             return jsonify({
                 "error": "invalid"
             }), 403
@@ -1129,6 +1322,7 @@ def claim():
         session_id, error = claim_qr_locked(qr)
 
         if error:
+
             return jsonify({
                 "error": error
             }), 403
@@ -1163,14 +1357,17 @@ def game():
         allowed, reason = player_allowed(player)
 
         if not allowed:
+
             return render_template(
                 "expired.html",
                 reason=reason
             ), 403
 
+        game_url = state["game_url"]
+
         return render_template(
             "game.html",
-            game_url=GAME_URL,
+            game_url=game_url,
             player_id=player["player_id"],
             admin_mode=False
         )
@@ -1192,12 +1389,14 @@ def player_heartbeat():
         allowed, reason = player_allowed(player)
 
         if not allowed:
+
             return jsonify({
                 "allowed": False,
                 "reason": reason
             })
 
         player["last_seen"] = now()
+
         player["status"] = "playing"
 
         remaining = max(
@@ -1222,14 +1421,19 @@ def admin_game():
     session = staff_session()
 
     if not session:
+
         return redirect(url_for("admin"))
 
     if session["role"] != "admin":
+
         return redirect(url_for("reception_page"))
+
+    with lock:
+        game_url = state["game_url"]
 
     return render_template(
         "game.html",
-        game_url=GAME_URL,
+        game_url=game_url,
         player_id="ADMIN",
         admin_mode=True
     )
