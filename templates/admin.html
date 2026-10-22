@@ -11,7 +11,7 @@
 >
 
 <title>
-科学技術部 管理者画面
+科学技術部 ゲーム管理システム
 </title>
 
 <link
@@ -19,11 +19,19 @@
     href="{{ url_for('static', filename='css/style.css') }}"
 >
 
+<!-- CSRF認証 -->
 <meta
     name="csrf-token"
     content="{{ csrf }}"
 >
 
+<!-- QRコード生成ライブラリ -->
+<script
+    src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+    defer
+></script>
+
+<!-- 管理画面JavaScript -->
 <script
     src="{{ url_for('static', filename='js/admin.js') }}"
     defer
@@ -32,6 +40,10 @@
 </head>
 
 <body>
+
+<!-- =====================================
+     ヘッダー
+===================================== -->
 
 <header class="header">
 
@@ -42,7 +54,7 @@
         </h1>
 
         <p>
-            ゲーム発表会 管理者画面
+            ゲーム発表会 管理システム
         </p>
 
     </div>
@@ -50,7 +62,7 @@
     <div class="header-actions">
 
         <span id="connectionStatus">
-            接続確認中
+            接続確認中...
         </span>
 
         <button
@@ -64,7 +76,17 @@
 
 </header>
 
+
+<!-- =====================================
+     管理画面
+===================================== -->
+
 <main class="admin-layout">
+
+
+    <!-- =================================
+         受付設定
+    ================================= -->
 
     <section class="control-panel">
 
@@ -102,19 +124,22 @@
 
         </div>
 
+
+        <!-- 現在の設定 -->
+
         <div class="info-box">
 
             <div>
                 受付状態：
                 <strong id="statusText">
-                    停止中
+                    読み込み中...
                 </strong>
             </div>
 
             <div>
                 受付PC：
                 <strong id="receptionConnection">
-                    未接続
+                    確認中...
                 </strong>
             </div>
 
@@ -129,11 +154,14 @@
             <div>
                 終了時刻：
                 <strong id="deadlineText">
-                    未設定
+                    読み込み中...
                 </strong>
             </div>
 
         </div>
+
+
+        <!-- 管理者ゲーム -->
 
         <a
             href="/admin/game"
@@ -146,6 +174,10 @@
 
     </section>
 
+
+    <!-- =================================
+         プレイヤー管理
+    ================================= -->
 
     <section class="players-panel">
 
@@ -168,10 +200,73 @@
         <div id="playersList">
 
             <p class="empty-message">
-                プレイヤーはいません
+                サーバーから取得しています...
             </p>
 
         </div>
+
+    </section>
+
+
+    <!-- =================================
+         QRコード確認パネル
+    ================================= -->
+
+    <section class="qr-panel">
+
+        <div class="panel-title">
+            現在の受付QRコード
+        </div>
+
+        <div
+            id="receptionStatus"
+            class="status-badge"
+        >
+            接続確認中...
+        </div>
+
+        <h2 id="qrPlayer">
+            PLAYER ---
+        </h2>
+
+
+        <!-- QRコード -->
+
+        <div class="qr-box">
+
+            <div id="qrcode"></div>
+
+            <div id="qrPlaceholder">
+                QRコードを取得しています...
+            </div>
+
+        </div>
+
+
+        <!-- 有効期限 -->
+
+        <div class="qr-timer">
+
+            QRコード残り有効時間
+
+            <strong id="qrRemaining">
+                --:--
+            </strong>
+
+        </div>
+
+
+        <p class="qr-description">
+
+            現在、受付PCに表示されている
+            QRコードを確認できます。
+
+            <br><br>
+
+            QRコードが使用されると、
+            自動的に次のQRコードへ更新されます。
+
+        </p>
 
     </section>
 
