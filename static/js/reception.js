@@ -278,7 +278,7 @@ setInterval(
 // 3秒ごとにサーバーへハートビート
 setInterval(
     poll,
-    3000
+    1000
 );
 
 // 初回通信
