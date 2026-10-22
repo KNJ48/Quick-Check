@@ -159,6 +159,35 @@ function formatTime(seconds) {
 
 
 // ========================================
+// 最終通信からの経過時間表示
+// ========================================
+
+function formatElapsedTime(seconds) {
+
+    seconds = Math.max(
+        0,
+        Math.floor(seconds)
+    );
+
+    const minutes = Math.floor(seconds / 60);
+
+    const remainingSeconds = seconds % 60;
+
+    if (minutes === 0) {
+
+        return remainingSeconds + "秒前";
+    }
+
+    return (
+        minutes +
+        "分" +
+        remainingSeconds +
+        "秒前"
+    );
+}
+
+
+// ========================================
 // 日本時間
 // ========================================
 
@@ -392,8 +421,8 @@ function renderPlayers(players) {
             status.textContent =
                 statusLabel(player.status) +
                 "（" +
-                player.last_seen_seconds +
-                "秒前）";
+                formatElapsedTime(player.last_seen_seconds) +
+                "）";
 
             info.appendChild(name);
 
