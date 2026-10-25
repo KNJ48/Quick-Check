@@ -30,7 +30,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 DEFAULT_GAME_URL = (
     "https://ink3-1239.github.io/"
     "url-tool-39cf2075ec432800b501/"
-    "a7f3c91e2b.html?v=memo7"
+    "a7f3c91e2b.html"
 )
 
 JST = ZoneInfo("Asia/Tokyo")
